@@ -7,52 +7,53 @@
 FitTools::FitTools():
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Class constructor. Main task is tuning the PORT_i interfaces handling 
+//  Class constructor. Main task is tuning the PORT_i interfaces handling
 //  the minimisation.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 _xPORT( MAX_PARAMETERS ) // There are up to MAX_PARAMETERS parameters to minimise.
 {
-  
+
 
   // Initialisation of antennas times and positions
   //===
   memset( _Xa, 0x0, (N_ANTENNA_DATA*MAX_ANTENNA+ADD_USER_SPACE)
     *sizeof(double) );
   _Na = 0;
-  
+
   // Initialisation of error matrix.
   //===
   memset( _errorM,  0x0, MAX_PARAMETERS*MAX_ANTENNA*sizeof( double ) );
   memset( _errorII, 0x0, MAX_PARAMETERS*sizeof( double ) );
   _sigma_t = 0.0;
-  
+
   // Initialisation of gchi2 vars
   //===
   _gchi2_algorithm = 204;
   _lambda_153[ 0 ] = 0.0;
   _p_lambda_153 = _lambda_153+1;
-  
+
   // Minimiser tuning
   //===
   _xPORT.max_func_evals() = 1000;
   _xPORT.max_iterations() = 1000;
   _xPORT.printing_off(); // Mute the minimiser, comment this for debug
-  
+
   // Default fit settings
   //===
   _fitModel      = POINT_SOURCE;
+  _fixedSource   = false;
   _fixedSpeed    = true;
   _fixedZs       = false;
   _cr            = 1.0;
   _computeErrors = true;
-  
+
   // Default parameter initialisation
   //===
   _xs = _ys = _zs = _ts = 0.0;
   _theta = _phi = 0.0;
   _x0 = _y0 = _z0 = _s0 = _a0 = 0.0;
-  
+
   // Initialise random engine
   //===
   srand48( time( NULL ) );
@@ -69,118 +70,118 @@ FitTools::~FitTools()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 void FitTools::_initFit()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#define MAX_R 1e10 
+#define MAX_R 1e10
 {
   // Reset constrains
   //===
-  for ( int i = 0; i < _xPORT.N(); i++ ) 
-  { 
+  for ( int i = 0; i < _xPORT.N(); i++ )
+  {
     _xPORT.B( 1, i+1 ) = -MAX_R;
-    _xPORT.B( 2, i+1 ) =  MAX_R; 
+    _xPORT.B( 2, i+1 ) =  MAX_R;
   }
 
-  if ( _fitModel == POINT_SOURCE ) 
+  if ( _fitModel == POINT_SOURCE )
   {
     _nParameters = 4;
 
-    // Connect the objective function to minimise and its gradient 
+    // Connect the objective function to minimise and its gradient
     //===
     _xPORT.f = &PSF_function_F;
     _xPORT.g = &PSF_function_G;
-  
+
     // Set bounding: Ts <= 0
     //===
     _xPORT.B( 2, 4 ) = 0.0; // Ts parameter (4th) max value (2) is 0.0.
                             // This is to ensure a causal solution.
-    
+
     // Initialise fit parameters
     //===
     _xPORT.X( 1 ) = _xs;
     _xPORT.X( 2 ) = _ys;
     _xPORT.X( 3 ) = _zs;
     _xPORT.X( 4 ) = _ts;
-    _xPORT.X( 5 ) = _cr; 
+    _xPORT.X( 5 ) = _cr;
   }
-  else if ( _fitModel == PLAN_WAVE ) 
+  else if ( _fitModel == PLAN_WAVE )
   {
     _nParameters = 2;
 
-    // Connect the objective function to minimise and its gradient 
+    // Connect the objective function to minimise and its gradient
     //===
     _xPORT.f = &PWF_function_F;
     _xPORT.g = &PWF_function_G;
-    
+
     // Set bounding: 0 <= theta <= pi
     //===
     _xPORT.B( 1, 1 ) = 0.0;    // theta parameter (1st) min value (1) is 0.0
     _xPORT.B( 2, 1 ) = M_PI;   // theta parameter (1st) max value (2) is pi
     _xPORT.B( 1, 2 ) = 0.0;    // phi parameter (2nd) min value (1) is 0.0
     _xPORT.B( 2, 2 ) = 2*M_PI; // phi parameter (2nd) max value (2) is 2*pi
-    
+
     // Initialise fit parameters
     //===
     _xPORT.X( 1 ) = _theta;
     _xPORT.X( 2 ) = _phi;
     _xPORT.X( 3 ) = _cr;
   }
-  else if ( _fitModel == EXPONENTIAL_AMPLITUDE ) 
+  else if ( _fitModel == EXPONENTIAL_AMPLITUDE )
   {
     _nParameters = 4;
 
-    // Connect the objective function to minimise and its gradient 
+    // Connect the objective function to minimise and its gradient
     //===
     _xPORT.f = &EAM_function_F;
     _xPORT.g = &EAM_function_G;
-    
+
     // Set bounding: a0 >= 0
     //===
     _xPORT.B( 1, 4 ) = 0.0;    // a0 parameter (4th) min value (1) is 0.0
-    
+
     // Initialise fit parameters
     //===
     _xPORT.X( 1 ) = _x0;
     _xPORT.X( 2 ) = _y0;
     _xPORT.X( 3 ) = _s0;
     _xPORT.X( 4 ) = _a0;
-    
+
     // Initialise cascade direction
     //===
     _Xa[ N_ANTENNA_DATA*MAX_ANTENNA     ] = -sin( _phi )*sin( _theta );
     _Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 1 ] = cos( _phi )*sin( _theta );
     _Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 2 ] = cos( _theta );
   }
-  else if ( _fitModel == SPHERICAL_AMPLITUDE ) 
+  else if ( _fitModel == SPHERICAL_AMPLITUDE )
   {
     _nParameters = 4;
 
-    // Connect the objective function to minimise and its gradient 
+    // Connect the objective function to minimise and its gradient
     //===
     _xPORT.f = &SAM_function_F;
     _xPORT.g = &SAM_function_G;
-    
+
     // Set bounding: a0 >= 0
     //===
     _xPORT.B( 1, 1 ) = 0.0; // a0 parameter (1st) min value (1) is 0.0
-    
+
     // Initialise fit parameters
     //===
     _xPORT.X( 1 ) = _s0;
     _xPORT.X( 2 ) = _xs;
     _xPORT.X( 3 ) = _ys;
     _xPORT.X( 4 ) = _zs;
-    
+
     if ( _fixedSource ) // Fit only source amplitude
       _nParameters = 1;
     else if ( _fixedZs )
       _nParameters = 3; // Fit source amplitude and x,y coordinates (not z).
   }
-  
-  if ( !_fixedSpeed && ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) ) 
+
+  if ( !_fixedSpeed && ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) )
   {
     //  Add wave speed as last parameter
     //===
     _nParameters++;
-    
+
     // Set bounding: cr >= 0
     //===
     _xPORT.B( 1, _nParameters ) = 0.0; // Speed parameter min value is 0.0
@@ -191,9 +192,9 @@ void FitTools::_initFit()
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 void FitTools::_copyFitParameters()
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( _fitModel == POINT_SOURCE ) 
+  if ( _fitModel == POINT_SOURCE )
   {
     // Get fit parameters
     //===
@@ -201,11 +202,11 @@ void FitTools::_copyFitParameters()
     _ys = _xPORT.X( 2 );
     _zs = _xPORT.X( 3 );
     _ts = _xPORT.X( 4 );
-    
-    if ( _nParameters == 5 ) 
+
+    if ( _nParameters == 5 )
       _cr = _xPORT.X( 5 );
   }
-  else if ( _fitModel == PLAN_WAVE ) 
+  else if ( _fitModel == PLAN_WAVE )
   {
     // Get fit parameters
     //===
@@ -213,7 +214,7 @@ void FitTools::_copyFitParameters()
     _phi   = _xPORT.X( 2 );
     _cr    = _xPORT.X( 3 );
   }
-  else if ( _fitModel == EXPONENTIAL_AMPLITUDE ) 
+  else if ( _fitModel == EXPONENTIAL_AMPLITUDE )
   {
     // Get fit parameters
     //===
@@ -222,7 +223,7 @@ void FitTools::_copyFitParameters()
     _s0 = _xPORT.X( 3 );
     _a0 = _xPORT.X( 4 );
   }
-  else if ( _fitModel == SPHERICAL_AMPLITUDE ) 
+  else if ( _fitModel == SPHERICAL_AMPLITUDE )
   {
     // Get fit parameters
     //===
@@ -242,12 +243,12 @@ double& FitTools::xa( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
   }
-  else 
+  else
     return _Xa[ N_ANTENNA_DATA*( n - 1 ) ];
 }
 
@@ -260,12 +261,12 @@ double& FitTools::ya( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
   }
-  else 
+  else
     return _Xa[ N_ANTENNA_DATA*( n - 1 ) + 1 ];
 }
 
@@ -278,12 +279,12 @@ double& FitTools::za( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
   }
-  else 
+  else
     return _Xa[ N_ANTENNA_DATA*( n - 1 ) + 2 ];
 }
 
@@ -296,7 +297,7 @@ double& FitTools::ta( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
@@ -314,7 +315,7 @@ double& FitTools::sa( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
@@ -332,12 +333,12 @@ double& FitTools::sat( const int& n )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) ) 
+  if ( ( n <= 0 ) || ( n > MAX_ANTENNA ) )
   {
     _dummyReal = 0.0;
     return _dummyReal;
   }
-  else 
+  else
     return _Xa[ N_ANTENNA_DATA*( n - 1 ) + 5 ];
 }
 
@@ -351,10 +352,10 @@ double FitTools::error( const int& i, const int& j )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( j <= 0 ) || ( j > MAX_ANTENNA ) || 
-       ( i <= 0 ) || ( i > MAX_PARAMETERS ) ) 
+  if ( ( j <= 0 ) || ( j > MAX_ANTENNA ) ||
+       ( i <= 0 ) || ( i > MAX_PARAMETERS ) )
     return ( 0.0 );
-  else 
+  else
     return _errorM[ i-1 ][ j-1 ];
 }
 
@@ -363,16 +364,16 @@ double FitTools::error( const int& i, const int& j )
 double FitTools::error( const int& i )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Reference to the error coefficient on parameter i for identical and 
-//  independently distributed errors on inputs with unit sigma. Multiply 
-//  by the common sigma value of input measurements to get the true 
+//  Reference to the error coefficient on parameter i for identical and
+//  independently distributed errors on inputs with unit sigma. Multiply
+//  by the common sigma value of input measurements to get the true
 //  parameters error.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( ( i <= 0 ) || ( i > MAX_PARAMETERS ) ) 
+  if ( ( i <= 0 ) || ( i > MAX_PARAMETERS ) )
     return( 0.0 );
-  else 
+  else
     return _errorII[ i-1 ];
 }
 
@@ -381,81 +382,81 @@ double FitTools::error( const int& i )
 double FitTools::fit( int na )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Perform a single fit with user suplied initial conditions. Returns the 
-//  fit chi2. In case of faillure -1 is returned. The fit best guess is 
+//  Perform a single fit with user suplied initial conditions. Returns the
+//  fit chi2. In case of faillure -1 is returned. The fit best guess is
 //  stored in fit parameters vector.
 //
 //  The number na of antenna can be provided as input argument. The current
-//  value of _Na is assumed otherwise. 
+//  value of _Na is assumed otherwise.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   // Update number of antennas if required
   //===
-  if ( na > 0 ) 
+  if ( na > 0 )
     _Na = na;
 
   double t0, z0;
-  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) 
+  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE )
   {
     // Regularise the time origin
     //===
     t0 = this->ta( 1 );
-    for ( int i = 2; i <= _Na; i++ ) 
-      if ( this->ta( i ) < t0 ) 
+    for ( int i = 2; i <= _Na; i++ )
+      if ( this->ta( i ) < t0 )
         t0 = this->ta( i );
-    for ( int i = 1; i <= _Na; i++ ) 
+    for ( int i = 1; i <= _Na; i++ )
       this->ta( i )-= t0;
   }
-  else if ( _fitModel == EXPONENTIAL_AMPLITUDE ) 
+  else if ( _fitModel == EXPONENTIAL_AMPLITUDE )
   {
     // Regularise z coordinate
     //===
     z0 = 0.0;
-    for ( int i = 1; i <= _Na; i++ ) 
+    for ( int i = 1; i <= _Na; i++ )
       z0+= this->za( i )/_Na;
     for ( int i = 1; i <= _Na; i++ )
       this->za( i )-= z0;
     this->z0() = z0;
   }
-  
+
   // Initialise according to fit model
   //===
   _initFit();
-  
+
   // Do the fit
   //===
   double chi2 = -1;
-  if ( _xPORT.MNGB( &_Na, _Xa, NULL, _nParameters ) ) 
-  {    
-    chi2 = _xPORT.value_f(); 
+  if ( _xPORT.MNGB( &_Na, _Xa, NULL, _nParameters ) )
+  {
+    chi2 = _xPORT.value_f();
     this->_copyFitParameters();
   }
-  
-  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) 
+
+  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE )
   {
     // Restore the time origin
     //===
-    for ( int i = 1; i <= _Na; i++ ) 
+    for ( int i = 1; i <= _Na; i++ )
       this->ta( i )+= t0;
-    if ( _fitModel == POINT_SOURCE ) 
+    if ( _fitModel == POINT_SOURCE )
     {
       this->ts()+= t0;
       _xPORT.X( 4 )+= t0;
     }
   }
-  else if ( _fitModel == EXPONENTIAL_AMPLITUDE ) 
+  else if ( _fitModel == EXPONENTIAL_AMPLITUDE )
   {
     // Restore the z origin
     //===
-    for ( int i = 1; i <= _Na; i++ ) 
+    for ( int i = 1; i <= _Na; i++ )
       this->za( i )+= z0;
   }
-  
+
   // Normalise chi2
   //===
   if ( ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) &&
-        ( _sigma_t > 0.0 ) ) 
+        ( _sigma_t > 0.0 ) )
     chi2 /= _sigma_t*_sigma_t;
   //std::cout << "Chi2 normalized = " << chi2 << std::endl;
   return chi2;
@@ -466,48 +467,48 @@ double FitTools::fit( int na )
 double FitTools::scan( int na )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Generic routine for scan like algorithms. The scan tries several fit with 
-//  various initial conditions. The minimum chi2 over all fits is returned. 
-//  In case of faillure -1 is returned. The fit best guess is stored as 
+//  Generic routine for scan like algorithms. The scan tries several fit with
+//  various initial conditions. The minimum chi2 over all fits is returned.
+//  In case of faillure -1 is returned. The fit best guess is stored as
 //  parameter vector.
 //
 //  The number na of antenna can be provided as input argument. The current
-//  value of _Na is assumed otherwise.  
+//  value of _Na is assumed otherwise.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   // Update number of antennas if required
   //===
-  if ( na > 0 ) 
+  if ( na > 0 )
     _Na = na;
-  
+
   // Initialise according to fit model
   //===
   _initFit();
-  
+
   // Route on specific scan algorithm
   //===
   double chi2;
-  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE )  
+  if ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE )
   {
     chi2 = this->_scan_TDoA();
     //std::cout << "Best Chi2 = " << chi2  << ", theta = " << this->theta()*180/3.1415927 << " deg , phi = " << this->phi()*180/3.1415927 << " deg. " << std::endl;
     //std::cout << "Best Chi2 = " << chi2  << ", source pos = ( = " << this->xs() << ", " << this->ys() << ", " << this->zs() << "). Time =  " << this->ts()  << std::endl;
   }
   else if ( _fitModel == EXPONENTIAL_AMPLITUDE )
-    chi2 = this->_scan_EAM(); 
+    chi2 = this->_scan_EAM();
   else if ( _fitModel == SPHERICAL_AMPLITUDE )
     chi2 = this->_scan_SAM();
-    
+
   if ( _computeErrors )
   {
-    if ( ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) && 
+    if ( ( _fitModel == POINT_SOURCE || _fitModel == PLAN_WAVE ) &&
       ( _sigma_t <= 0.0 ) )
       this->errorPropagation();
     else
       this->errorPropagation( chi2 );
   }
-    
+
   return( chi2 );
 }
 
@@ -516,9 +517,9 @@ double FitTools::scan( int na )
 double FitTools::_scan_TDoA()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Scan Algorithm for FitTools algorithms. Tries several fit with various 
-//  initial conditions. For example for point source localisation initial 
-//  conditions are taken as a scan of the space in spherical coordinates: 
+//  Scan Algorithm for FitTools algorithms. Tries several fit with various
+//  initial conditions. For example for point source localisation initial
+//  conditions are taken as a scan of the space in spherical coordinates:
 //  r, theta, phi. Steps by 15 degrees in theta, half-quadrant (45 degrees)
 //  in phi and logarithmically in r, from 1 m to 10 km.
 //
@@ -527,7 +528,7 @@ double FitTools::_scan_TDoA()
 #define N_RANGE  4
 #define N_THETA  5
 #define N_PHI    8
-{ 
+{
   // Scan values
   //===
   double speed_v[] = {  0.20, 0.40, 0.60, 0.80, 1.0  };
@@ -535,17 +536,17 @@ double FitTools::_scan_TDoA()
   double theta_v[] = {  15., 45., 60., 75., 90. };
   double phi_v[]   = {  0.,  45., 90., 135., 180., 225., 270., 315.};
   //double phi_v[]   = {  0.,  15., 30., 45., 60., 75., 90., 105., 120., 135., 150., 165., 180., 195., 210., 225., 240., 255., 270., 285., 300., 315., 330., 345.};
-  
+
   double deg2rad = M_PI/180.;
-  
+
   // Tune scan parameters according to wave type fit
   //===
   double x0, y0, z0;
   int ir_max, ic_max;
-  if ( _fitModel == POINT_SOURCE ) 
+  if ( _fitModel == POINT_SOURCE )
   {
     x0 = y0 = z0 = 0.0;
-    for ( int i = 1; i <= _Na; i++ ) 
+    for ( int i = 1; i <= _Na; i++ )
     {
       x0+= this->xa( i )/_Na;
       y0+= this->ya( i )/_Na;
@@ -553,14 +554,14 @@ double FitTools::_scan_TDoA()
     }
     ir_max = N_RANGE;
   }
-  else if ( _fitModel == PLAN_WAVE ) 
+  else if ( _fitModel == PLAN_WAVE )
     ir_max = 1;
-  
+
   if ( _fixedSpeed )
     ic_max = 1;
-  else 
+  else
     ic_max = N_SPEED;
-  
+
   // Do the scan
   //==
   double chi2 = -1;
@@ -570,62 +571,62 @@ double FitTools::_scan_TDoA()
   double dist = 1e60;
   double dista = 0;
   int m;
-  
+
   std::vector<double> S( _nParameters, 0 );
-  for ( int ic = 0; ic < ic_max; ic++ ) 
-    for ( int ir = 0; ir < ir_max; ir++ ) 
-      for ( int it = 0; it < N_THETA; it++ ) 
-        for ( int ip = 0; ip < N_PHI; ip++ ) 
+  for ( int ic = 0; ic < ic_max; ic++ )
+    for ( int ir = 0; ir < ir_max; ir++ )
+      for ( int it = 0; it < N_THETA; it++ )
+        for ( int ip = 0; ip < N_PHI; ip++ )
   {
-    if ( !_fixedSpeed ) 
+    if ( !_fixedSpeed )
       this->cr() = speed_v[ ic ];
-      
-    if ( _fitModel == POINT_SOURCE ) 
+
+    if ( _fitModel == POINT_SOURCE )
     {
       this->xs() = -range_v[ ir ]*sin( phi_v[ ip ]*deg2rad )
         *sin( theta_v[ it ]*deg2rad ) + x0;
       this->ys() = range_v[ ir ]*cos( phi_v[ ip ]*deg2rad )
         *sin( theta_v[ it ]*deg2rad ) + y0;
       this->zs() = range_v[ ir ]*cos( theta_v[ it ]*deg2rad ) + z0;
-      
-      // Distance to the closest antenna from the hypothetical 
+
+      // Distance to the closest antenna from the hypothetical
       // source position
       //===
-      for ( int i = 0; i < this->Na(); i++ ) 
+      for ( int i = 0; i < this->Na(); i++ )
       {
         disx  = this->xs()-this->xa( i*N_ANTENNA_DATA ) ;
-	disy  = this->ys()-this->ya( i*N_ANTENNA_DATA + 1 ); 
-        disz  = this->zs()-this->za( i*N_ANTENNA_DATA + 2 ); 
+	disy  = this->ys()-this->ya( i*N_ANTENNA_DATA + 1 );
+        disz  = this->zs()-this->za( i*N_ANTENNA_DATA + 2 );
         dista = sqrt( disx*disx + disy*disy + disz*disz );
-        if ( dista < dist ) 
-          dist = dista;    
+        if ( dista < dist )
+          dist = dista;
       }
       this->ts() = -dist/this->cr();
-    }		   
-    else if ( _fitModel == PLAN_WAVE ) 
+    }
+    else if ( _fitModel == PLAN_WAVE )
     {
       this->theta() = theta_v[ it ]*deg2rad;
       this->phi()   = phi_v[ ip ]*deg2rad;
     }
-    
+
     double d = this->fit();
-    
-    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) ) 
+
+    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) )
     {
       //std::cout << "Chi2 improved!" << std::endl;
       //std::cin >> m;  //pause
       chi2   = d;
-      for ( int ipar = 0; ipar < _nParameters; ipar++ ) 
-        S[ ipar ] = _xPORT.X( ipar+1 );  
-    }  
+      for ( int ipar = 0; ipar < _nParameters; ipar++ )
+        S[ ipar ] = _xPORT.X( ipar+1 );
+    }
   }
-  
+
   // Restore best parameter guess
   //===
-  for ( int ipar = 0; ipar < _nParameters; ipar++ ) 
+  for ( int ipar = 0; ipar < _nParameters; ipar++ )
     _xPORT.X( ipar+1 ) = S[ ipar ];
-  this->_copyFitParameters(); 
-  
+  this->_copyFitParameters();
+
   return chi2;
 }
 #undef N_PHI
@@ -638,23 +639,23 @@ double FitTools::_scan_TDoA()
 double FitTools::_scan_SAM()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Scan algorithm for amplitude reconstruction model according to 
+//  Scan algorithm for amplitude reconstruction model according to
 //  1/distance_to_source loss (spherical waves). Initial conditions are
-//  taken as a scan of the source position around the reconstructed one 
+//  taken as a scan of the source position around the reconstructed one
 //  in the spherical fit.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #define N_RANGE  11
 {
-  double Dx, Dy, Dz, x0, y0, z0, s0, smax, xmax, ymax, zmax, disx, disy, 
+  double Dx, Dy, Dz, x0, y0, z0, s0, smax, xmax, ymax, zmax, disx, disy,
          disz, dist;
-	 
+
   int nx, ny, nz;
-  
+
   Dx = 100.0; // m
   Dy = 100.0; // m
   Dz = 100.0; // m
-  
+
   if ( _fixedSource )
   {
     nx = ny = nz = 1;
@@ -668,12 +669,12 @@ double FitTools::_scan_SAM()
   {
     nx = ny = nz = N_RANGE;
   }
-  	
+
   x0 = this->xs();
-  y0 = this->ys(); 
+  y0 = this->ys();
   z0 = this->zs();
-   
-  // Get antenna with max amplitude 
+
+  // Get antenna with max amplitude
   //===
   smax = this->sa( 0 );
   xmax = this->xa( 0 );
@@ -681,7 +682,7 @@ double FitTools::_scan_SAM()
   zmax = this->za( 0 );
   for ( int i = 1; i < _Na; i++ )
   {
-    if ( this->sa( i ) > smax ) 
+    if ( this->sa( i ) > smax )
     {
       smax = this->sa( i );
       xmax = this->xa( i );
@@ -689,51 +690,51 @@ double FitTools::_scan_SAM()
       zmax = this->za( i );
     }
   }
-  
+
   // Scan values
   //===
-  double range_v[]  = { -4.0, -2.0, -1.0, -0.50, -0.25, 0.0, 0.25, 0.50, 
+  double range_v[]  = { -4.0, -2.0, -1.0, -0.50, -0.25, 0.0, 0.25, 0.50,
                          1.0, 2.0, 4.0 };
 
   // Do the scan
   //===
   double chi2 = -1;
-  
+
   std::vector<double> S( _nParameters, 0 );
-  for ( int ix = 0; ix < nx; ix++ ) 
+  for ( int ix = 0; ix < nx; ix++ )
     for ( int iy = 0; iy < ny; iy++ )
-      for ( int iz = 0; iz < nz; iz++ ) 
+      for ( int iz = 0; iz < nz; iz++ )
   {
     if ( !_fixedSource )
-    {   
+    {
       this->xs() = x0 + range_v[ ix ]*Dx; // New source x-coord
       this->ys() = y0 + range_v[ iy ]*Dy; // New source y-coord
     }
     if ( !_fixedZs && !_fixedSource )
       this->zs() = z0 + range_v[ iz ]*Dz; // New source z-coord
-    
+
     disx = this->xs() - xmax;
     disy = this->ys() - ymax;
     disz = this->zs() - zmax;
     dist = sqrt( disx*disx + disy*disy + disz*disz ); // Distance from the source position to the antenna with the highest amplitude
-    
+
     this->s0() = smax + 20*log(dist)/log(10);         // New source amplitude (assuming max amplitude is correct) in dB
-    
+
     double d = this->fit();
-    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) ) 
+    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) )
     {
       chi2   = d;
       for ( int ipar = 0; ipar < _nParameters; ipar++ )
         S[ ipar ] = _xPORT.X( ipar+1 );
-    }  
+    }
   }
-  
+
   // Restore best parameter guess
   //===
   for ( int ipar = 0; ipar < _nParameters; ipar++ )
-    _xPORT.X( ipar+1 ) = S[ ipar ];  
+    _xPORT.X( ipar+1 ) = S[ ipar ];
   this->_copyFitParameters();
-  
+
   return chi2;
 }
 #undef N_RANGE
@@ -746,7 +747,7 @@ double FitTools::_scan_EAM()
 //  Scan algorithm for amplitude reconstruction model according to exponential
 //  loss with the lateral distance to the shower axis. Initial conditions are
 //  taken as a scan of the impact point over the field of antennas. Loss is
-//  scanned for a characteristic length in the range 50-500m.    
+//  scanned for a characteristic length in the range 50-500m.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #define N_RANGE  11
@@ -754,38 +755,38 @@ double FitTools::_scan_EAM()
 {
   static const double cte = 20.0/log( 10.0 );
 
-  // Get array half widths along x and y directions and get the coordinates  
-  // of the closest antenna to shower impact point 
+  // Get array half widths along x and y directions and get the coordinates
+  // of the closest antenna to shower impact point
   //===
   double dmin, dmax, Dx, Dy, x0, y0, s0;
   int i0;
-  
+
   // Half width along x
   //===
-  dmin = dmax =  this->xa( 1 ); 
-  for ( int i = 1; i <= _Na; i++ ) 
+  dmin = dmax =  this->xa( 1 );
+  for ( int i = 1; i <= _Na; i++ )
   {
     if ( this->xa( i ) < dmin ) dmin = this->xa( i );
     else if ( this->xa( i ) > dmax ) dmax = this->xa( i );
   }
   Dx = 0.5*( dmax - dmin );
-  
-  // Half width along y 
+
+  // Half width along y
   //===
   dmin = dmax =  this->ya( 1 );
   for ( int i = 2; i <= _Na; i++ ) {
     if ( this->ya( i ) < dmin ) dmin = this->ya( i );
     else if ( this->ya( i ) > dmax ) dmax = this->ya( i );
   }
-  Dy = 0.5*( dmax - dmin ); 
-  
+  Dy = 0.5*( dmax - dmin );
+
   // Coordinates of the closest antenna to the shower impact point
   //===
   i0 = 1;
   dmax =  this->sa( 1 );
-  for ( int i = 2; i <= _Na; i++ ) 
+  for ( int i = 2; i <= _Na; i++ )
   {
-    if ( this->sa( i ) > dmax ) 
+    if ( this->sa( i ) > dmax )
     {
       dmax = this->sa( i );
       i0 = i;
@@ -794,40 +795,40 @@ double FitTools::_scan_EAM()
   x0 = this->xa( i0 );
   y0 = this->ya( i0 );
   s0 = this->sa( i0 );
-    
+
   // Scan values
   //===
   double lambda_v[] = {  50., 100., 150., 200., 300., 400., 500. };
-  double range_v[]  = {  -4.0, -2.0, -1.0, -0.50, -0.25, 0.0, 
+  double range_v[]  = {  -4.0, -2.0, -1.0, -0.50, -0.25, 0.0,
                           0.25, 0.50, 1.0, 2.0, 4.0 };
   // Do the scan
   //===
   double chi2 = -1.0;
   std::vector<double> S( _nParameters, 0 );
-  for ( int il = 0; il < N_LAMBDA; il++ ) 
-    for ( int ix = 0; ix < N_RANGE; ix++ ) 
-      for ( int iy = 0; iy < N_RANGE; iy++ ) 
-  {     
+  for ( int il = 0; il < N_LAMBDA; il++ )
+    for ( int ix = 0; ix < N_RANGE; ix++ )
+      for ( int iy = 0; iy < N_RANGE; iy++ )
+  {
     double dx = range_v[ ix ]*Dx;
     double dy = range_v[ iy ]*Dy;
     this->x0() = x0 + dx;  // New core x-coord
     this->y0() = y0 + dy;  // New core y-coord
     this->s0() = s0*exp( sqrt( dx*dx + dy*dy )/lambda_v[ il ] );  // New core amplitude (assuming max amplitude is correct)
     this->a0() = cte/lambda_v[ il ];
-    
+
     double d = this->fit();
-    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) ) 
+    if ( ( d >= 0 && d < chi2 ) || ( chi2 < 0 ) )
     {
       chi2   = d;
-      for ( int ipar = 0; ipar < _nParameters; ipar++ ) 
+      for ( int ipar = 0; ipar < _nParameters; ipar++ )
         S[ ipar ] = _xPORT.X( ipar+1 );
-    }  
+    }
   }
-  
+
   // Restore best parameter guess
   //===
   for ( int ipar = 0; ipar < _nParameters; ipar++ )
-    _xPORT.X( ipar+1 ) = S[ ipar ];  
+    _xPORT.X( ipar+1 ) = S[ ipar ];
   this->_copyFitParameters();
   return chi2;
 }
@@ -842,49 +843,49 @@ void FitTools::errorPropagation( double chi2obs )
 //  Compute LO error propagation. Build up the error matrix relating input
 //  errors on times, DT to output errors on parameters, DT, as:
 //
-//  DP_i = error( i, j )*DT_j.  
+//  DP_i = error( i, j )*DT_j.
 //
-//  For identical and independently distributed time errors of standard 
+//  For identical and independently distributed time errors of standard
 //  deviation sigma_t(), the standard deviation of the error on parameter
 //  P_i goes as:
 //
 //  sigma_i/sigma_t = error( i ) = sqrt( sum( error( i, j )^2 ), j=1...Na ).
 //
 //  If a chi2obs value is provided, the routine additionaly computes the
-//  significance of the observed chi2 value, assuming identical independently 
-//  Gausian distributed time errors of standard deviation sigma_t(). The  
+//  significance of the observed chi2 value, assuming identical independently
+//  Gausian distributed time errors of standard deviation sigma_t(). The
 //  computation is done according to the LO propagation of the error terms.
 //
 //  NB: Note that the routine is yet only implemented for the plan wave
-//  reconstruction algorithm.     
+//  reconstruction algorithm.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( _fitModel != PLAN_WAVE ) 
+  if ( _fitModel != PLAN_WAVE )
     return;
 
   double A[ 2 ][ 2 ], B[ 2], dK[ 2 ][ 3 ], d1, d2, dx, dy, dz;
   int i, j;
-  
+
   // Clear error terms
   //===
   memset( _errorM,  0x0, MAX_PARAMETERS*MAX_ANTENNA*sizeof( double ) );
   memset( _errorII, 0x0, MAX_PARAMETERS*sizeof( double ) );
-    
+
   double ct = cos( _theta );
   double st = sin( _theta );
   double cp = cos(   _phi );
   double sp = sin(   _phi );
- 
+
   dK[ 0 ][ 0 ] = -ct*sp;
   dK[ 0 ][ 1 ] =  ct*cp;
   dK[ 0 ][ 2 ] =    -st;
-  
+
   dK[ 1 ][ 0 ] = -st*cp;
   dK[ 1 ][ 1 ] = -st*sp;
   dK[ 1 ][ 2 ] =    0.0;
-  
-  // Compute A matrix ( AX = B, with X = parameters error vector 
+
+  // Compute A matrix ( AX = B, with X = parameters error vector
   // and B = measurements error vector )
   //===
   memset( A, 0x0, 4*sizeof( double ) );
@@ -894,24 +895,24 @@ void FitTools::errorPropagation( double chi2obs )
     dx = _Xa[ j*N_ANTENNA_DATA     ] - _Xa[ i*N_ANTENNA_DATA     ];
     dy = _Xa[ j*N_ANTENNA_DATA + 1 ] - _Xa[ i*N_ANTENNA_DATA + 1 ];
     dz = _Xa[ j*N_ANTENNA_DATA + 2 ] - _Xa[ i*N_ANTENNA_DATA + 2 ];
-  
+
     d1 = dx*dK[ 0 ][ 0 ] + dy*dK[ 0 ][ 1 ] + dz*dK[ 0 ][ 2 ];
     d2 = dx*dK[ 1 ][ 0 ] + dy*dK[ 1 ][ 1 ];
-	 
+
     A[ 0 ][ 0 ] += d1*d1;
     A[ 1 ][ 1 ] += d2*d2;
-    
+
     A[ 1 ][ 0 ] += d1*d2;
   }
   A[ 0 ][ 1 ] = A[ 1 ][ 0 ];
-  
+
   // Compute error matrix terms
   //===
   d1 = A[ 0 ][ 0 ]*A[ 1 ][ 1 ] - A[ 0 ][ 1 ]*A[ 1 ][ 0 ];
   if ( d1 == 0.0 )
     return;
   d1 = 1.0/d1;
-  
+
   for ( j = 0; j < _Na; j++ )
   {
     memset( B, 0x0, 2*sizeof( double ) );
@@ -921,19 +922,19 @@ void FitTools::errorPropagation( double chi2obs )
       dy = _Xa[ j*N_ANTENNA_DATA + 1 ] - _Xa[ i*N_ANTENNA_DATA + 1 ];
       dz = _Xa[ j*N_ANTENNA_DATA + 2 ] - _Xa[ i*N_ANTENNA_DATA + 2 ];
       B[ 0 ] += dx*dK[ 0 ][ 0 ] + dy*dK[ 0 ][ 1 ] + dz*dK[ 0 ][ 2 ];
-      B[ 1 ] += dx*dK[ 1 ][ 0 ] + dy*dK[ 1 ][ 1 ]; 
+      B[ 1 ] += dx*dK[ 1 ][ 0 ] + dy*dK[ 1 ][ 1 ];
     }
-  
+
     _errorM[ 0 ][ j ] = ( B[ 0 ]*A[ 1 ][ 1 ] - B[ 1 ]*A[ 0 ][ 1 ] )*d1;
     _errorM[ 1 ][ j ] = ( B[ 1 ]*A[ 0 ][ 0 ] - B[ 0 ]*A[ 1 ][ 0 ] )*d1;
-    
+
     _errorII[ 0 ] += _errorM[ 0 ][ j ]*_errorM[ 0 ][ j ];
     _errorII[ 1 ] += _errorM[ 1 ][ j ]*_errorM[ 1 ][ j ];
   }
   _errorII[ 0 ] = sqrt( _errorII[ 0 ] );
   _errorII[ 1 ] = sqrt( _errorII[ 1 ] );
-  
-  
+
+
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   // Chi2 significance
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -957,14 +958,14 @@ void FitTools::errorPropagation( double chi2obs )
     _chi2_significance = -1.0;
     return;
   }
-  
+
   // Build the generalised chi2 correlation matrix
   //===
   double xs[ 3 ], S[ 2 ][ MAX_ANTENNA ];
   double **C = new double*[ _Na ];
   for ( i = 0; i < _Na; i++ )
     C[ i ] = new double[ _Na ];
-  
+
   memset( xs, 0x0, 3*sizeof( double ) );
   for ( i  = 0; i < _Na; i++ )
   {
@@ -972,50 +973,50 @@ void FitTools::errorPropagation( double chi2obs )
     xs[ 1 ]+= _Xa[ i*N_ANTENNA_DATA + 1 ];
     xs[ 2 ]+= _Xa[ i*N_ANTENNA_DATA + 2 ];
   }
-  
+
   for ( i  = 0; i < _Na; i++ )
   {
-    S[ 0 ][ i ] = 
+    S[ 0 ][ i ] =
       ( xs[ 0 ] - _Na*_Xa[ i*N_ANTENNA_DATA     ] )*dK[ 0 ][ 0 ] +
       ( xs[ 1 ] - _Na*_Xa[ i*N_ANTENNA_DATA + 1 ] )*dK[ 0 ][ 1 ] +
       ( xs[ 2 ] - _Na*_Xa[ i*N_ANTENNA_DATA + 2 ] )*dK[ 0 ][ 2 ];
-    S[ 1 ][ i ] = 
+    S[ 1 ][ i ] =
       ( xs[ 0 ] - _Na*_Xa[ i*N_ANTENNA_DATA     ] )*dK[ 1 ][ 0 ] +
       ( xs[ 1 ] - _Na*_Xa[ i*N_ANTENNA_DATA + 1 ] )*dK[ 1 ][ 1 ];
   }
-  
+
   for ( j  = 0; j < _Na-1; j++ )
     for ( i  = j+1; i < _Na; i++ )
   {
-    C[ i ][ j ] = C[ j ][ i ] = 
+    C[ i ][ j ] = C[ j ][ i ] =
       _errorM[ 0 ][ i ]*_errorM[ 0 ][ j ]*A[ 0 ][ 0 ] +
       _errorM[ 1 ][ i ]*_errorM[ 1 ][ j ]*A[ 1 ][ 1 ] +
       ( _errorM[ 0 ][ i ]*_errorM[ 1 ][ j ] +
         _errorM[ 1 ][ i ]*_errorM[ 0 ][ j ] )*A[ 0 ][ 1 ] +
-      _errorM[ 0 ][ i ]*S[ 0 ][ j ] + _errorM[ 0 ][ j ]*S[ 0 ][ i ] + 
+      _errorM[ 0 ][ i ]*S[ 0 ][ j ] + _errorM[ 0 ][ j ]*S[ 0 ][ i ] +
       _errorM[ 1 ][ i ]*S[ 1 ][ j ] + _errorM[ 1 ][ j ]*S[ 1 ][ i ] +
       -1.0;
   }
-  
+
   for ( i  = 0; i < _Na; i++ )
   {
-    C[ i ][ i ] = 
+    C[ i ][ i ] =
       _errorM[ 0 ][ i ]*_errorM[ 0 ][ i ]*A[ 0 ][ 0 ] +
       _errorM[ 1 ][ i ]*_errorM[ 1 ][ i ]*A[ 1 ][ 1 ] +
       2.0*_errorM[ 0 ][ i ]*_errorM[ 1 ][ i ]*A[ 0 ][ 1 ] +
-      2.0*_errorM[ 0 ][ i ]*S[ 0 ][ i ] + 
+      2.0*_errorM[ 0 ][ i ]*S[ 0 ][ i ] +
       2.0*_errorM[ 1 ][ i ]*S[ 1 ][ i ] +
       _Na - 1.0;
   }
-  
+
   // Compute the generalised chi2 eigen values
   //===
   this->eigenv( C, _lambda, _Na );
-  
+
   // Protect eigen values and chi2 against roundof errors
   //===
   double lmax, sum;
-  
+
   lmax = _lambda[ 0 ];
   sum  = 0.0;
   for ( i  = 0; i < _Na; i++ )
@@ -1024,24 +1025,24 @@ void FitTools::errorPropagation( double chi2obs )
       lmax = _lambda[ i ];
     sum+= _lambda[ i ];
   }
-  
+
   for ( i  = 0; i < _Na; i++ )
     if ( _lambda[ i ]/lmax < 1e-3 )
       _lambda[ i ] = 0.0;
   if ( chi2obs/sum < 1e-3 )
     chi2obs = 0.0;
-  
+
   // Build the generalised chi2 coefficients and ndofs
-  //=== 
+  //===
   int n = 0;
   for ( i = 0; i <_Na; i++ )
   {
     if ( _lambda[ i ] == 0.0 )
      continue;
-    
+
     _lambda[ n ] = _lambda[ i ];
-    _mult[ n ]   = 1; 
-    
+    _mult[ n ]   = 1;
+
     for ( j = i+1; j < _Na; j++ )
       if ( fabs( _lambda[ n ] - _lambda[ j ] )/fabs( _lambda[ n ] + _lambda[ j ] ) < 1e-3 )
       {
@@ -1051,11 +1052,11 @@ void FitTools::errorPropagation( double chi2obs )
     n++;
   }
   memset( _delta, 0x0, _Na*sizeof( double ) );
-  
+
   // Compute the chi2 significance
   //===
   _chi2_significance = erfinv( gchi2cdf( _lambda, _delta, _mult, n, chi2obs ) )*sqrt( 2 );
-  
+
   for ( i = 0; i < _Na; i++ )
     delete[] C[ i ];
   delete[] C;
@@ -1070,27 +1071,27 @@ double FitTools::randn()
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  if ( _randn_parity ) 
+  if ( _randn_parity )
   {
     _randn_parity = false;
     return ( _randn_d2 );
   }
   else
     _randn_parity = true;
-  
-  do 
+
+  do
   {
     _randn_d1 = 2*drand48() - 1;
     _randn_d2 = 2*drand48() - 1;
-    _randn_sq = _randn_d1*_randn_d1 + _randn_d2*_randn_d2; 
+    _randn_sq = _randn_d1*_randn_d1 + _randn_d2*_randn_d2;
   }
-  while ( _randn_sq > 1. || _randn_sq == 0 ); 
-  
+  while ( _randn_sq > 1. || _randn_sq == 0 );
+
   _randn_sq = sqrt( -2*log( _randn_sq )/_randn_sq );
-  
+
   _randn_d1*= _randn_sq;
-  _randn_d2*= _randn_sq; 
-  
+  _randn_d2*= _randn_sq;
+
   return ( _randn_d1 );
 }
 
@@ -1099,11 +1100,11 @@ double FitTools::randn()
 double FitTools::erfinv( double p )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Inverse of the error function. Adaptation from an algorithm giving the  
+//  Inverse of the error function. Adaptation from an algorithm giving the
 //  lower tail quantile standard normal distribution function.
 //
-//  The original algorithm uses a minimax approximation by rational functions 
-//  and the result has a relative error whose absolute value is less than 
+//  The original algorithm uses a minimax approximation by rational functions
+//  and the result has a relative error whose absolute value is less than
 //  1.15e-9.
 //
 //  Ref: Peter J. Acklam,  http://www.math.uio.no/~jacklam
@@ -1149,14 +1150,14 @@ double FitTools::erfinv( double p )
   };
 
   double q, r;
-  
+
   if ( p <= 0 )
     return ( 0.0 );
   else if ( p >= 1)
     return ( HUGE_VAL );
-    
+
   p = 0.5*( 1 + p );
-     
+
   if ( p > 0.97575 ) // Rational approximation for upper region
   {
     q  = sqrt(-2*log(1-p));
@@ -1195,11 +1196,11 @@ void FitTools::eigenv( double** A, double* V, const int& n )
 void FitTools::_tred2( double **a, const int& n, double* d, double* e )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Householder reduction of a double, symmetric matrix a[0..n-1][0..n-1]. On 
-//  output, a is replaced by the orthogonal matrix Q effecting the 
-//  transformation. d[0..n-1] returns the diagonal elements of the tridiagonal 
+//  Householder reduction of a double, symmetric matrix a[0..n-1][0..n-1]. On
+//  output, a is replaced by the orthogonal matrix Q effecting the
+//  transformation. d[0..n-1] returns the diagonal elements of the tridiagonal
 //  matrix, and e[0..n-1] the off-diagonal elements, with e[0]=0. Several
-//  statements, as noted in comments, can be omitted if only eigenvalues are 
+//  statements, as noted in comments, can be omitted if only eigenvalues are
 //  to be found, in which case a contains no useful information on output.
 //  Otherwise they are to be included.
 //
@@ -1210,19 +1211,19 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
   int l, k, j, i;
   double scale, hh, h, g, f;
 
-  for ( i = n-1; i >= 1; i-- ) 
+  for ( i = n-1; i >= 1; i-- )
   {
     l = i-1;
     h = scale = 0.0;
-    if ( l > 0 ) 
+    if ( l > 0 )
     {
       for ( k = 0; k <= l; k++ )
         scale += fabs( a[ i ][ k]  );
       if ( scale == 0.0 ) // Skip transformation.
         e[ i ] = a [ i ][ l ];
-      else 
+      else
       {
-        for ( k = 0; k <= l; k++ ) 
+        for ( k = 0; k <= l; k++ )
 	{
           a[ i ][ k ] /= scale; // Use scaled a's for transformation.
           h += a[ i ][ k ]*a[ i ][ k ]; // Form sigma in h.
@@ -1233,12 +1234,12 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
         h -= f*g; // Now h is equation (11.2.4).
         a[ i ][ l ] = f - g; //Store u in the ith row of a.
         f = 0.0;
-        for ( j = 0; j <= l; j++ ) 
+        for ( j = 0; j <= l; j++ )
 	{
           /* Next statement can be omitted if eigenvectors not wanted */
           a[ j ][ i ] = a[ i ][ j ]/h; // Store u/H in ith column of a.
           g = 0.0; // Form an element of A.u in g.
-          for ( k = 0; k <= j; k++ ) 
+          for ( k = 0; k <= j; k++ )
             g += a[ j ][ k ]*a[ i ][ k ];
           for ( k = j+1; k <= l; k++ )
             g += a[ k ][ j ]*a[ i ][ k ];
@@ -1247,7 +1248,7 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
         }
         hh = f/( h + h ); // Form K, equation (11.2.11).
         for ( j = 0; j <= l; j++ ) // Form q and store in e overwriting p.
-	{ 
+	{
           f = a[ i ][ j ];
           e[ j ] = g = e[ j ] - hh*f;
           for ( k = 0; k <= j; k++ ) // Reduce a, equation (11.2.13).
@@ -1269,7 +1270,7 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
     l = i - 1;
     if ( d[ i ] ) // This block skipped when i=0
     {
-      for ( j = 0; j <= l; j++ ) 
+      for ( j = 0; j <= l; j++ )
       {
         g = 0.0;
         for ( k = 0; k <= l; k++ ) // Use u and u/H stored in a to form P.Q.
@@ -1280,8 +1281,8 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
     }
     d[ i ] = a[ i ][ i ]; // This statement remains.
     a[ i ][ i ] = 1.0;    // Reset row and column of a to identity
-    for ( j = 0; j <= l; j++ ) // matrix for next iteration.  
-      a[ j ][ i ] = a[ i ][ j ] = 0.0; 
+    for ( j = 0; j <= l; j++ ) // matrix for next iteration.
+      a[ j ][ i ] = a[ i ][ j ] = 0.0;
   }
 }
 
@@ -1289,18 +1290,18 @@ void FitTools::_tred2( double **a, const int& n, double* d, double* e )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 void FitTools::_tqli( double* d, double* e, const int& n, double **z )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//  QL algorithm with implicit shifts, to determine the eigenvalues and 
-//  eigenvectors of a double, symmetric, tridiagonal matrix, or of a double, 
-//  symmetric matrix previously reduced by tred2 (11.2). On input, d[0..n-1] 
-//  contains the diagonal elements of the tridiagonal matrix. On output, it 
-//  returns the eigenvalues. The vector e[0..n-1] inputs the subdiagonal 
-//  elements of the tridiagonal matrix, with e[0] arbitrary. On output e 
-//  is destroyed. When finding only the eigenvalues, several lines may be 
-//  omitted, as noted in the comments. If the eigenvectors of a tridiagonal 
-//  matrix are desired, the matrix z[0..n-1][0..n-1] is input as the identity 
-//  matrix. If the eigenvectors of a matrix that has been reduced by tred2 
-//  are required, then z is input as the matrix output by tred2. In either 
-//  case, the kth column of z returns the normalized eigenvector  
+//  QL algorithm with implicit shifts, to determine the eigenvalues and
+//  eigenvectors of a double, symmetric, tridiagonal matrix, or of a double,
+//  symmetric matrix previously reduced by tred2 (11.2). On input, d[0..n-1]
+//  contains the diagonal elements of the tridiagonal matrix. On output, it
+//  returns the eigenvalues. The vector e[0..n-1] inputs the subdiagonal
+//  elements of the tridiagonal matrix, with e[0] arbitrary. On output e
+//  is destroyed. When finding only the eigenvalues, several lines may be
+//  omitted, as noted in the comments. If the eigenvectors of a tridiagonal
+//  matrix are desired, the matrix z[0..n-1][0..n-1] is input as the identity
+//  matrix. If the eigenvectors of a matrix that has been reduced by tred2
+//  are required, then z is input as the matrix output by tred2. In either
+//  case, the kth column of z returns the normalized eigenvector
 //  corresponding to d[k].
 //
 //  Ref: Numerical Recipes in C, 11.3.
@@ -1313,21 +1314,21 @@ void FitTools::_tqli( double* d, double* e, const int& n, double **z )
   double s, r, p, g, f, dd, c, b;
 
   for ( i = 1; i < n; i++ ) // Convenient to renumber the elements of e.
-    e[ i-1 ] = e[ i ]; 
+    e[ i-1 ] = e[ i ];
   e[ n-1 ] = 0.0;
-  
-  for ( l = 0; l < n; l++ ) 
+
+  for ( l = 0; l < n; l++ )
   {
     iter=0;
-    do 
+    do
     {
       for ( m = l; m < n-1; m++ ) // Look for a single small subdiagonal element to split the matrix.
       {
         dd = fabs( d[ m ] ) + fabs( d[ m+1 ] );
-        if ( (double)( fabs( e[ m ] ) + dd ) == dd ) 
+        if ( (double)( fabs( e[ m ] ) + dd ) == dd )
 	  break;
       }
-      if ( m != l ) 
+      if ( m != l )
       {
         if ( iter++ == 30 )
 	{
@@ -1337,7 +1338,7 @@ void FitTools::_tqli( double* d, double* e, const int& n, double **z )
         g = ( d[ l+1 ] - d[ l ] )/( 2.0*e[ l ] ); // Form shift.
         r = _pythag( g, 1.0 );
         g = d[ m ] - d[ l ] + e[ l ]/( g + SIGN( r, g ) ); // This is dm - ks.
-        s = c = 1.0; 
+        s = c = 1.0;
         p = 0.0;
         for ( i = m-1; i >= l; i-- ) // A plane rotation as in the original QL, followed by Givens
 	{                            // rotations to restore tridiagonal form.
@@ -1358,19 +1359,19 @@ void FitTools::_tqli( double* d, double* e, const int& n, double **z )
           g = c*r - b;
           /* Next loop can be omitted if eigenvectors not wanted*/
           for ( k = 0; k < n; k++ ) // Form eigenvectors.
-	  { 
+	  {
             f = z[ k ][ i+1 ];
             z[ k ][ i+1 ] = s*z[ k ][ i ] + c*f;
             z[ k ][ i ]   = c*z[ k ][ i ] - s*f;
           }
         }
-        if ( r == 0.0 && i >= l ) 
+        if ( r == 0.0 && i >= l )
 	  continue;
         d[ l ] -= p;
         e[ l ]  = g;
         e[ m ] = 0.0;
       }
-    } 
+    }
     while ( m != l );
   }
 }
@@ -1394,16 +1395,16 @@ double FitTools::_pythag ( const double& a, const double& b )
    wa = fabs ( a );
    wb = fabs ( b );
 
-   if ( wa > wb ) 
+   if ( wa > wb )
    {
       w = wa;
       wa = wb;
       wb = w;
    }
 
-   if ( wb == 0.0 ) 
+   if ( wb == 0.0 )
       return 0.0;
-   else 
+   else
    {
       w = wa / wb;
       return wb * sqrt ( 1.0 + w * w );
@@ -1412,7 +1413,7 @@ double FitTools::_pythag ( const double& a, const double& b )
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::gchi2cdf( double* lambda, double* delta, int* ndof, 
+double FitTools::gchi2cdf( double* lambda, double* delta, int* ndof,
   const int& n, const double& x )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -1425,23 +1426,23 @@ double FitTools::gchi2cdf( double* lambda, double* delta, int* ndof,
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  static const int	order_153	= 12;	
+  static const int	order_153	= 12;
   static const double	eps1_256	= 1e-4;
   static const double	eps2_256	= 1e-4;
   static const double	eps3_256	= 1e-4;
-  
+
   static const double	eps_204		= 1e-4;
   static const double	eps_155		= 1e-4;
   static const int      lim_155         = 10000;
-  
+
   double 		bound_256  	= 0.0;
   int    		ifault   	= 0;
-  
+
   if ( ( n == 1 ) && ( _mult[ 0 ] == 1 ) )
     return( erf( x/sqrt( 2 )/lambda[ 0 ] ) );
-  
+
   if ( _gchi2_algorithm == 256 )
-    return ( _imhof( lambda, ndof, delta, n, x, bound_256, 
+    return ( _imhof( lambda, ndof, delta, n, x, bound_256,
       eps1_256, eps2_256, eps3_256, ifault ) );
   else if ( _gchi2_algorithm == 204 )
     return( _ruben( lambda, ndof, delta, n, x, eps_204, ifault ) );
@@ -1461,8 +1462,8 @@ double FitTools::gchi2cdf( double* lambda, double* delta, int* ndof,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::_imhof( double* lambda, int* mult, double* delta,   
-  const int& noterms, const double& arg, double& bound, 
+double FitTools::_imhof( double* lambda, int* mult, double* delta,
+  const int& noterms, const double& arg, double& bound,
   const double& eps1, const double& eps2, const double& eps3, int& ifault )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -1479,7 +1480,7 @@ double FitTools::_imhof( double* lambda, int* mult, double* delta,
   #if ( SECURED_IMHOF )
     // Check parameters
     //===
-    if ( ( noterms < 1 ) || ( eps1 <= 0.0 ) || 
+    if ( ( noterms < 1 ) || ( eps1 <= 0.0 ) ||
          ( eps2 <= 0.0 ) || ( eps3 <= 0.0 ) )
     {
       ifault = 2;
@@ -1492,20 +1493,20 @@ double FitTools::_imhof( double* lambda, int* mult, double* delta,
       if ( ( mult[ i ] < 1 ) || ( delta[ i ] < 0.0 ) )
       {
         ifault = 3;
-        return( -(double)i ); 
+        return( -(double)i );
       }
     }
   #endif
-  
+
   // Main body
   //===
   if ( bound <= 0.0 )
     bound = _imhofbd( lambda, mult, delta, noterms, eps1, eps2, ifault );
-      
+
   double p = _imhofint( lambda, mult, delta, noterms, arg, bound, eps3, ifault );
   if ( ( p < 1e-4 ) || ( ifault != 0 )  )
     p = 0.0;
-    
+
   return( p );
 }
 
@@ -1528,7 +1529,7 @@ double FitTools::_imhofbd( double* lambda, int* mult, double* delta,
   #if ( SECURED_IMHOF )
     if ( ( noterms < 1 ) || ( eps1 <= 0.0 ) || ( eps2 <= 0.0 ) )
     {
-      ifault = 2; 
+      ifault = 2;
       return( -2.0 );
     }
   #endif
@@ -1544,17 +1545,17 @@ double FitTools::_imhofbd( double* lambda, int* mult, double* delta,
     }
     sum2 += delta[ i ];
   }
-   
+
   if ( count < 0.9 )
   {
-    ifault = 4; 
+    ifault = 4;
     return( -4.0 );
   }
-  
+
   count *= 0.5;
   sum1   = 0.5*sum1 + log( M_PI*count );
   range  = exp( -( sum1 + 0.5*sum2 + log( eps1 ) )/count );
- 
+
   if ( sum2 == 0.0 )
     range += 5.0/count;
   else
@@ -1563,7 +1564,7 @@ double FitTools::_imhofbd( double* lambda, int* mult, double* delta,
     {
       sum2 = 0.0;
       for ( i = 0; i < noterms; i++ )
-      { 
+      {
         hold  = range*lambda[ i ];
 	hold *= hold;
         sum2 += delta[ i ]*hold/( 1.0 + hold );
@@ -1571,19 +1572,19 @@ double FitTools::_imhofbd( double* lambda, int* mult, double* delta,
       hold = exp( sum1 + count*log( range ) + 0.5*sum2 );
       if ( hold*eps1 <= 1.0 )
         range += 5.0/count;
-      else 
+      else
         count = 0.0;
     }
     while ( count != 0.0 );
   }
-  
+
   return( range );
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 double FitTools::_imhofint( double* lambda, int* mult, double* delta,
-  const int& noterms, const double& arg, const double& bound, 
+  const int& noterms, const double& arg, const double& bound,
   const double& eps3, int& ifault )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -1603,7 +1604,7 @@ double FitTools::_imhofint( double* lambda, int* mult, double* delta,
   #if( SECURED_IMHOF )
     if ( ( noterms < 1 ) || ( bound <= 0.0 ) || ( eps3 <= 0.0 ) )
     {
-      ifault = 2; 
+      ifault = 2;
       return( -2.0 );
     }
   #endif
@@ -1612,31 +1613,31 @@ double FitTools::_imhofint( double* lambda, int* mult, double* delta,
   n      = 2;
   step   = 0.5*bound;
   eps4   = 3.0*M_PI*eps3;
-  
+
   sum1   = -arg;
   for ( i = 0; i < noterms; i++ )
     sum1 +=lambda[ i ]*( mult[ i ] + delta[ i ] );
   sum1 = 0.5*sum1 + _imhoffn( lambda, mult, delta, noterms, arg, bound );
-  
+
   sum4 = _imhoffn( lambda, mult, delta, noterms, arg, step );
   int2 = ( sum1 + 4.0*sum4 )*step;
-  
-  sum2 = 0.0;  
+
+  sum2 = 0.0;
   for ( i = 1; i <= maxit; i++ )
   {
     n+= n;
     step  = 0.5*step;
-    
+
     sum2 += sum4;
-    sum4  = 0.0; 
+    sum4  = 0.0;
     for ( j = 1; j <= n; j+= 2 )
       sum4 += _imhoffn( lambda, mult, delta, noterms, arg, j*step );
-       
-    int1 = int2;   
+
+    int1 = int2;
     int2 = ( sum1 + 2.0*sum2 + 4.0*sum4 )*step;
-    
-    if ( i > 3 ) 
-      if ( fabs( int1 - int2 ) < eps4 ) 
+
+    if ( i > 3 )
+      if ( fabs( int1 - int2 ) < eps4 )
       {
         if ( fabs( int2 ) > 1.5*M_PI )
 	  ifault = 6;
@@ -1645,13 +1646,13 @@ double FitTools::_imhofint( double* lambda, int* mult, double* delta,
         break;
       }
   }
-  
+
   return( 0.5 - int2/( 3.0*M_PI ) );
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::_imhoffn( double* lambda, int* mult, double* delta, 
+double FitTools::_imhoffn( double* lambda, int* mult, double* delta,
   const int& noterms, const double& arg, const double& u )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -1661,11 +1662,11 @@ double FitTools::_imhoffn( double* lambda, int* mult, double* delta,
 {
   int i;
   double hold, hold2, hold3, rho, sum, theta;
-  
+
   rho   = 0.0;
   sum   = 0.0;
   theta = -u*arg;
-  
+
   for ( i  = 0; i < noterms; i++ )
   {
     hold   = u*lambda[ i ];
@@ -1675,7 +1676,7 @@ double FitTools::_imhoffn( double* lambda, int* mult, double* delta,
     sum   += delta[ i]*hold2/hold3;
     rho   += mult[ i ]*log( hold3 );
   }
-   
+
   return( sin( 0.5*theta )/( u*exp( 0.5*sum + 0.25*rho ) ) );
 }
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1684,13 +1685,13 @@ double FitTools::_imhoffn( double* lambda, int* mult, double* delta,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::_ruben( double* lambda, int* mult, double* delta, 
+double FitTools::_ruben( double* lambda, int* mult, double* delta,
   const int& n, const double& c, const double& eps, int& ifault )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  Use of Rubin's (1962) method to evaluate the expression  
+//  Use of Rubin's (1962) method to evaluate the expression
 //  Pr[d k(i) K}(m(i),k(i)}) < c]   where k(i) and c are positive constants,
-//  and where K}(m(i),k(i)}) represents an independent chi-squared random 
+//  and where K}(m(i),k(i)}) represents an independent chi-squared random
 //  variable with m(j) degrees of freedom and non-centrality parameter k(i)}.
 //
 //   n =  number of chi-squared terms
@@ -1701,30 +1702,30 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
 //  The program returns the cumulative probability value at the point c in
 //  the distribution.
 //
-//  Ref: Program description: Journal of the Royal Statistical Society 
-//  (Series C) Vol 33 No 3  1984, R.W. Farebrother,  Algorithm AS204, 
+//  Ref: Program description: Journal of the Royal Statistical Society
+//  (Series C) Vol 33 No 3  1984, R.W. Farebrother,  Algorithm AS204,
 //  pp 332 - 339.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static const int    maxit  = 500;                  // Maximum number of iterations in eq. 3 of algorithm.
-  static const double mode   = 0.0;                  // Set mode = 0.90625 for AS 204A. But 0.0 should be 
+  static const double mode   = 0.0;                  // Set mode = 0.90625 for AS 204A. But 0.0 should be
                                                      // closer to optimal beta choice (see Rubin's).
-  static const double lnspi2 = 0.5*log( 0.5*M_PI ); 
-  
-  double tol, beta, ao, aoinv, dnsty, z, rz, eps2, hold, hold2, sum, sum1, dans, 
+  static const double lnspi2 = 0.5*log( 0.5*M_PI );
+
+  double tol, beta, ao, aoinv, dnsty, z, rz, eps2, hold, hold2, sum, sum1, dans,
     lans, pans, prbty, temp;
   int itemp, i, j, k, m;
   double gamma[ MAX_ANTENNA ], theta[ MAX_ANTENNA ], a[ maxit ],
     b[ maxit ];
   bool ext, L;
-  
+
   if ( ( n < 1 ) || ( c <= 0.0 ) || ( maxit < 1 ) || ( eps <= 0.0 ) )
   {
     ifault = 2;
     return( 0.0 );
   }
-  
+
   tol = -200.0;
   // preliminaries
   beta = sum = lambda[ 0 ];
@@ -1735,17 +1736,17 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
         ifault = -i;
         return( 0.0 );
      }
-     if ( beta > lambda[ i  ] ) 
+     if ( beta > lambda[ i  ] )
        beta = lambda[ i  ];
      if ( sum < lambda[ i ] )
        sum = lambda[ i ];
   }
-  
+
   if ( mode > 0.0 )
     beta *= mode;
   else
     beta = 2.0/( 1.0/beta + 1.0/sum );
-  
+
   k    = 0;
   sum  = 1.0;
   sum1 = 0.0;
@@ -1759,18 +1760,18 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
     k    += mult[ i ];
     theta[ i ] = 1.0;
   }
-  
+
   ao = exp( 0.5*( log( sum ) - sum1 ) );
   if ( ao <= 0.0 )
   {
     ifault = 1;
     return( 0.0 );
   }
-  
+
   z = c/beta;
   /* Evaluate probability and density of chi-squared on
      k degrees of freedom. */
-     
+
   itemp = ( k / 2 ) * 2;
   if (  k == itemp )
   {
@@ -1786,9 +1787,9 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
     dans = exp( lans );
     pans = erf( sqrt( 0.5*z ) );
   }
-  
+
   k-= 2;
-  
+
   while( i <= k )
   {
     if ( lans < tol )
@@ -1801,19 +1802,19 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
        temp = dans;
        dans = temp * z/i;
      }
-     
+
      temp = pans;
      pans = temp - dans;
      i+= 2;
   }
-  
+
   // Evaluate successive terms of expansion
   prbty = pans;
   dnsty = dans;
   eps2  = eps/ao;
   aoinv = 1.0/ao;
   sum   = aoinv - 1.0;
-  
+
   for ( m = 0; m < maxit; m++ )
   {
     sum1 = 0.0;
@@ -1828,13 +1829,13 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
         sum1 += b[ i ]*a[ m - i - 1 ];
     a[ m ] = sum1/( m + 1 );
     sum1 = a[ m ];
-    
+
     k+= 2;
-    
+
     if ( lans < tol )
     {
       lans += log( z/k );
-      dans  = exp( lans ); 
+      dans  = exp( lans );
     }
     else
     {
@@ -1846,13 +1847,13 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
     dnsty += dans*sum1;
     sum1  *= pans;
     prbty += sum1;
-    
-    if ( prbty < -aoinv ) 
+
+    if ( prbty < -aoinv )
     {
       ifault = 3;
       return ( 0.0 );
     }
-    
+
     if ( fabs( pans*sum ) < eps2 )
     {
       if ( fabs( sum1 ) < eps2 )
@@ -1864,20 +1865,20 @@ double FitTools::_ruben( double* lambda, int* mult, double* delta,
   }
   if ( m == maxit )
     ifault = 4;
-    
+
   dnsty *= ao/(beta + beta);
   prbty *= ao;
-  if ( ( prbty < 0.0 ) || ( prbty > 1.0 ) ) 
+  if ( ( prbty < 0.0 ) || ( prbty > 1.0 ) )
     ifault += 5;
   else if ( dnsty < 0.0 )
     ifault += 6;
-  
+
   return( prbty );
 }
 
-  
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::_qf( double* lb, double* nc, int* n, const int& r, 
+double FitTools::_qf( double* lb, double* nc, int* n, const int& r,
   const double& sigma, const double& c, const int& lim, const double& acc,
   double* trace, int* ifault )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1918,97 +1919,97 @@ double FitTools::_qf( double* lb, double* nc, int* n, const int& r,
 //-------------------------------------------------------------------------
 #define cube( X ) \
   (X)*(X)*(X)
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  int j, nj, nt, ntm;  
+  int j, nj, nt, ntm;
   double acc1, almx, xlim, xnt, xntm;
   double utx, tausq, sd, intv, intv1, x, up, un, d1, d2, lj, ncj;
   double qfval;
   static const int rats[] = { 1, 2, 4, 8 };
 
   if ( setjmp( _qf_env ) != 0 ) // On call to longjmp, jump to endofproc
-  { 
-    *ifault = 4; 
-    goto endofproc; 
+  {
+    *ifault = 4;
+    goto endofproc;
   }
-  
-  _qf_r   = r; 
-  _qf_lim = lim; 
+
+  _qf_r   = r;
+  _qf_lim = lim;
   _qf_c   = c;
   _qf_n   = n;
   _qf_lb  = lb;
   _qf_nc  = nc;
-  
+
   memset( trace, 0x0, 7*sizeof( double ) );
-  
+
   *ifault    = 0;
   _qf_count  = 0;
   _qf_intl   = 0.0;
   _qf_ersm   = 0.0;
-  qfval      = -1.0; 
+  qfval      = -1.0;
   acc1       = acc;
-  _qf_ndtsrt = true;  
+  _qf_ndtsrt = true;
   _qf_fail   = false;
   xlim       = (double)_qf_lim;
-  
+
   _qf_th = (int*)malloc( _qf_r*sizeof( int ) );
-  if ( !_qf_th ) 
-  { 
-    *ifault = 5;  
-    goto endofproc; 
-  } 
+  if ( !_qf_th )
+  {
+    *ifault = 5;
+    goto endofproc;
+  }
 
   // Find mean, sd, max and min of lb,
   // check that parameter values are valid.
-  _qf_sigsq = square( sigma ); 
+  _qf_sigsq = square( sigma );
   sd        = _qf_sigsq;
-  _qf_lmax  = 0.0; 
-  _qf_lmin  = 0.0; 
+  _qf_lmax  = 0.0;
+  _qf_lmin  = 0.0;
   _qf_mean  = 0.0;
   for ( j = 0; j < _qf_r; j++ )
   {
     nj  = _qf_n[  j ];
     lj  = _qf_lb[ j ];
     ncj = _qf_nc[ j ];
-    if ( nj < 0  ||  ncj < 0.0 ) 
-    { 
-      *ifault = 3;  
-      goto  endofproc;  
+    if ( nj < 0  ||  ncj < 0.0 )
+    {
+      *ifault = 3;
+      goto  endofproc;
     }
     sd  += square( lj )*( 2.0*nj + 4.0*ncj );
     _qf_mean += lj*( nj + ncj );
-    if ( _qf_lmax < lj ) 
-      _qf_lmax = lj ; 
-    else if ( _qf_lmin > lj ) 
+    if ( _qf_lmax < lj )
+      _qf_lmax = lj ;
+    else if ( _qf_lmin > lj )
       _qf_lmin = lj;
   }
-      
+
   if ( sd == 0.0  )
-  {  
-    qfval = ( _qf_c > 0.0 ) ? 1.0 : 0.0; 
-    goto  endofproc;  
+  {
+    qfval = ( _qf_c > 0.0 ) ? 1.0 : 0.0;
+    goto  endofproc;
   }
   if ( ( _qf_lmin == 0.0 ) && ( _qf_lmax == 0.0 ) && ( sigma == 0.0 ) )
-  { 
-    *ifault = 3;  
+  {
+    *ifault = 3;
     goto  endofproc;
   }
   sd   = sqrt( sd );
   almx = ( _qf_lmax < -_qf_lmin ) ? -_qf_lmin : _qf_lmax;
 
   // Starting values for findu, ctff
-  utx = 16.0/sd;  
-  up  = 4.5/sd;  
+  utx = 16.0/sd;
+  up  = 4.5/sd;
   un  = -up;
-      
+
   // Truncation point with no convergence factor.
   _qf_findu( &utx, 0.5*acc1 );
-  
+
   // Does convergence factor help?
   if ( _qf_c != 0.0  && ( almx > 0.07 * sd ) )
   {
     tausq = .25 * acc1 / _qf_cfe( _qf_c );
-    if ( _qf_fail ) 
+    if ( _qf_fail )
       _qf_fail = false ;
     else if ( _qf_truncation( utx, tausq ) < .2 * acc1 )
     {
@@ -2017,60 +2018,60 @@ double FitTools::_qf( double* lb, double* nc, int* n, const int& r,
       trace[ 5 ] = sqrt( tausq );
     }
   }
-  trace[ 4 ] = utx;  
+  trace[ 4 ] = utx;
   acc1       = 0.5 * acc1;
 
   // Find RANGE of distribution, quit if outside this.
   l1:
     d1 = _qf_ctff( acc1, &up ) - _qf_c;
-    if ( d1 < 0.0 ) 
-    { 
-      qfval = 1.0; 
-      goto endofproc; 
-    }
-    d2 = _qf_c - _qf_ctff( acc1, &un );
-    if ( d2 < 0.0 ) 
-    { 
-      qfval = 0.0; 
+    if ( d1 < 0.0 )
+    {
+      qfval = 1.0;
       goto endofproc;
     }
-    
+    d2 = _qf_c - _qf_ctff( acc1, &un );
+    if ( d2 < 0.0 )
+    {
+      qfval = 0.0;
+      goto endofproc;
+    }
+
     // Find integration interval.
     intv = 2.0 * M_PI / ( ( d1 > d2 ) ? d1 : d2 );
-    
+
     // Calculate number of terms required for main and
     // auxillary integrations.
-    xnt  = utx / intv;  
+    xnt  = utx / intv;
     xntm = 3.0 / sqrt( acc1 );
     if ( xnt > xntm * 1.5 )
     {
       // Parameters for auxillary integration
-      if ( xntm > xlim ) 
-      { 
-        *ifault = 1; 
-	goto endofproc; 
+      if ( xntm > xlim )
+      {
+        *ifault = 1;
+	goto endofproc;
       }
       ntm   = (int)floor( xntm + 0.5 );
-      intv1 = utx / ntm;  
+      intv1 = utx / ntm;
       x     = 2.0 * M_PI / intv1;
       if ( x <= fabs( _qf_c ) )
         goto l2;
-         
+
       // Calculate convergence factor.
       tausq = 0.33 * acc1 / ( 1.1 * ( _qf_cfe( _qf_c - x ) + _qf_cfe( _qf_c + x ) ) );
-      if ( _qf_fail ) 
-        goto l2;   
+      if ( _qf_fail )
+        goto l2;
       acc1 = 0.67 * acc1;
-         
+
       // Auxillary integration.
       _qf_integrate( ntm, intv1, tausq, false );
-      xlim  -= xntm;  
+      xlim  -= xntm;
       _qf_sigsq += tausq;
-      trace[ 2 ] += 1.0; 
+      trace[ 2 ] += 1.0;
       trace[ 1 ] += ntm + 1.0;
-      
+
       // Find truncation point with new convergence factor.
-      _qf_findu( &utx, .25 * acc1 );  
+      _qf_findu( &utx, .25 * acc1 );
       acc1 = 0.75 * acc1;
       goto l1;
     }
@@ -2078,25 +2079,25 @@ double FitTools::_qf( double* lb, double* nc, int* n, const int& r,
     // Main integration.
     l2:
       trace[ 3 ] = intv;
-      if ( xnt > xlim ) 
-      { 
-        *ifault = 1; 
-	goto endofproc; 
+      if ( xnt > xlim )
+      {
+        *ifault = 1;
+	goto endofproc;
       }
       nt = (int)floor( xnt + 0.5 );
       _qf_integrate( nt, intv, 0.0, true );
-      trace[ 2 ] += 1.0; 
+      trace[ 2 ] += 1.0;
       trace[ 1 ] += nt + 1.0;
       qfval       = 0.5 - _qf_intl;
       trace[ 0]   = _qf_ersm;
 
       // Test whether round-off error could be significant
       // allow for radix 8 or 16 machines.
-      up = _qf_ersm; 
+      up = _qf_ersm;
       x  = up + acc / 10.0;
       for ( j = 0; j < 4; j++ )
-        if ( rats[ j ] * x == rats[ j ] * up ) 
-	  *ifault = 2; 
+        if ( rats[ j ] * x == rats[ j ] * up )
+	  *ifault = 2;
 
     endofproc:
       free( (char*)_qf_th );
@@ -2114,21 +2115,21 @@ void FitTools::_qf_counter()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   _qf_count++;
-  
+
   if ( _qf_count > _qf_lim )
     longjmp( _qf_env, 1 );
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-double FitTools::_qf_exp1( double x )               
+double FitTools::_qf_exp1( double x )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
 // To avoid underflows.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-{ 
-  return ( x < -50.0 ? 0.0 : exp( x ) ); 
+{
+  return ( x < -50.0 ? 0.0 : exp( x ) );
 }
 
 
@@ -2145,17 +2146,17 @@ double FitTools::_qf_log1( const double& x, const bool& first )
   else
   {
     double s, s1, term, y, k;
-    
-    y     = x / ( 2.0 + x );  
-    term  = 2.0 * cube( y );  
+
+    y     = x / ( 2.0 + x );
+    term  = 2.0 * cube( y );
     k     = 3.0;
     s     = ( first ? 2.0 : - x )*y;
     y     = square( y );
     for ( s1 = s + term / k; s1 != s; s1 = s + term / k )
-    { 
-      k    += 2.0; 
-      term *= y; 
-      s     = s1; 
+    {
+      k    += 2.0;
+      term *= y;
+      s     = s1;
     }
     return s;
   }
@@ -2170,9 +2171,9 @@ void FitTools::_qf_order()
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  int j, k; 
+  int j, k;
   double lj;
-  
+
   for ( j = 0; j < _qf_r; j++ )
   {
     lj = fabs( _qf_lb[ j ] );
@@ -2199,15 +2200,15 @@ double FitTools::_qf_errbd( double u, double* cx )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  double sum1, lj, ncj, x, y, xconst; 
+  double sum1, lj, ncj, x, y, xconst;
   int j, nj;
 
   _qf_counter();
-      
-  xconst = u * _qf_sigsq;  
-  sum1 = u * xconst;  
+
+  xconst = u * _qf_sigsq;
+  sum1 = u * xconst;
   u *= 2.0;
-  
+
   for ( j = _qf_r-1; j >= 0; j-- )
   {
     nj  = _qf_n[  j ];
@@ -2219,8 +2220,8 @@ double FitTools::_qf_errbd( double u, double* cx )
     sum1   += ncj * square( x / y )
            + nj * ( square( x ) / y + _qf_log1( -x, false ) );
   }
-  *cx = xconst; 
-    
+  *cx = xconst;
+
   return _qf_exp1( -0.5 * sum1 );
 }
 
@@ -2232,35 +2233,35 @@ double FitTools::_qf_ctff( double accx, double* upn )
 //  Find ctff so that p(qf > ctff) < accx,  if (upn > 0),
 //  p(qf < ctff) < accx, otherwise.
 //
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   double u1, u2, u, rb, xconst, c1, c2;
 
-  u2 = *upn;   
-  u1 = 0.0;  
+  u2 = *upn;
+  u1 = 0.0;
   c1 = _qf_mean;
   rb = 2.0 * ( ( u2 > 0.0 ) ? _qf_lmax : _qf_lmin );
   for ( u = u2 / ( 1.0 + u2 * rb ); _qf_errbd( u, &c2 ) > accx; u = u2 / ( 1.0 + u2 * rb ) )
   {
-    u1 = u2;  
-    c1 = c2;  
+    u1 = u2;
+    c1 = c2;
     u2 = 2.0 * u2;
   }
   for ( u = ( c1 - _qf_mean ) / ( c2 - _qf_mean ); u < 0.9; u = ( c1 - _qf_mean ) / ( c2 - _qf_mean ) )
   {
     u = ( u1 + u2 ) / 2.0;
     if ( _qf_errbd( u / (1.0 + u * rb ), &xconst ) > accx )
-    {  u1 = u; 
-       c1 = xconst;  
+    {  u1 = u;
+       c1 = xconst;
     }
     else
-    {  
-      u2 = u;  
-      c2 = xconst; 
+    {
+      u2 = u;
+      c2 = xconst;
     }
   }
-  *upn = u2; 
-  
+  *upn = u2;
+
   return c2;
 }
 
@@ -2278,43 +2279,43 @@ double FitTools::_qf_truncation( double u, double tausq )
   int j, nj, s;
 
   _qf_counter();
-  
-  sum1   = 0.0; 
-  prod2  = 0.0;  
-  prod3  = 0.0;  
+
+  sum1   = 0.0;
+  prod2  = 0.0;
+  prod3  = 0.0;
   s      = 0;
-  sum2   = ( _qf_sigsq + tausq )*u*u; 
+  sum2   = ( _qf_sigsq + tausq )*u*u;
   prod1  = 2.0*sum2;
   u     *= 2.0;
   for ( j = 0; j < _qf_r; j++ )
   {
-    lj    = _qf_lb[ j ];  
-    ncj   = _qf_nc[ j ]; 
+    lj    = _qf_lb[ j ];
+    ncj   = _qf_nc[ j ];
     nj    = _qf_n[  j ];
     x     = u*u*lj*lj;
     sum1 += ncj*x/( 1.0 + x );
-    
+
     if ( x > 1.0 )
     {
       prod2 += nj*log( x );
       prod3 += nj*_qf_log1( x, true );
       s     += nj;
     }
-    else  
+    else
       prod1 += nj*_qf_log1( x, true );
   }
   sum1  *= 0.5;
-  prod2 += prod1;  
+  prod2 += prod1;
   prod3 += prod1;
   x = _qf_exp1( -sum1 - 0.25*prod2 ) / M_PI;
   y = _qf_exp1( -sum1 - 0.25*prod3 ) / M_PI;
   err1 = ( s  ==  0 )  ? 1.0 : x*2.0/s;
   err2 = ( prod3 > 1.0 ) ? 2.5*y : 1.0;
-  if ( err2 < err1 ) 
+  if ( err2 < err1 )
     err1 = err2;
   x = 0.5*sum2;
   err2 = ( x  <=  y ) ? 1.0 : y/x;
-  
+
   return ( err1 < err2 ) ? err1 : err2;
 }
 
@@ -2327,15 +2328,15 @@ void FitTools::_qf_findu( double* utx, double accx )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  double u, ut; 
-  int i;  
+  double u, ut;
+  int i;
   double divis[] = { 2.0, 1.4, 1.2, 1.1 };
-      
-  ut = *utx; 
+
+  ut = *utx;
   u  = 0.25*ut;
   if ( _qf_truncation( u, 0.0 ) > accx )
   {
-    for ( u = ut; _qf_truncation( u, 0.0 ) > accx; u = ut ) 
+    for ( u = ut; _qf_truncation( u, 0.0 ) > accx; u = ut )
       ut *= 4.0;
   }
   else
@@ -2345,10 +2346,10 @@ void FitTools::_qf_findu( double* utx, double accx )
       ut = u;
   }
   for ( i = 0; i < 4; i++ )
-  { 
-    u = ut/divis[ i ]; 
-    if ( _qf_truncation( u, 0.0 )  <=  accx )  
-      ut = u; 
+  {
+    u = ut/divis[ i ];
+    if ( _qf_truncation( u, 0.0 )  <=  accx )
+      ut = u;
   }
   *utx = ut;
 }
@@ -2366,33 +2367,33 @@ void FitTools::_qf_integrate( int nterm, double interv, double tausq, bool mainx
 {
   double inpi, u, sum1, sum2, sum3, x, y, z;
   int k, j, nj;
-  
+
   inpi = interv / M_PI;
   for ( k = nterm; k >= 0; k-- )
   {
     u = ( k + 0.5 )*interv;
-    sum1 = - 2.0*u*_qf_c;  
+    sum1 = - 2.0*u*_qf_c;
     sum2 = fabs( sum1 );
     sum3 = -0.5*_qf_sigsq*square( u );
     for ( j = _qf_r-1; j >= 0; j-- )
     {
-      nj    = _qf_n[ j ]; 
-      x     = 2.0*_qf_lb[ j ]*u;  
+      nj    = _qf_n[ j ];
+      x     = 2.0*_qf_lb[ j ]*u;
       y     = square( x );
       sum3 -= 0.25*nj*_qf_log1( y, true );
       y     = _qf_nc[ j ]* x/( 1.0 + y );
       z     = nj*atan( x ) + y;
-      sum1 += z;   
+      sum1 += z;
       sum2 += fabs( z );
       sum3 -= 0.5*x*y;
     }
-    
+
     x = inpi*_qf_exp1( sum3 )/u;
     if ( !mainx )
       x *= 1.0 - _qf_exp1( -0.5*tausq*square( u ) );
-    sum1      = sin( 0.5*sum1 )*x;  
+    sum1      = sin( 0.5*sum1 )*x;
     sum2     *= 0.5*x;
-    _qf_intl += sum1; 
+    _qf_intl += sum1;
     _qf_ersm += sum2;
   }
 }
@@ -2407,27 +2408,27 @@ double FitTools::_qf_cfe( double x )
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
-  double axl, axl1, axl2, sxl, sum1, lj; 
+  double axl, axl1, axl2, sxl, sum1, lj;
   int j, k, t;
 
   _qf_counter();
-  
-  if ( _qf_ndtsrt ) 
+
+  if ( _qf_ndtsrt )
     _qf_order();
-  axl  = fabs( x );  
-  sxl  = ( x > 0.0 ) ? 1.0 : -1.0;  
+  axl  = fabs( x );
+  sxl  = ( x > 0.0 ) ? 1.0 : -1.0;
   sum1 = 0.0;
-  
+
   for ( j = _qf_r-1; j >= 0; j-- )
-  { 
+  {
     t = _qf_th[ j ];
     if ( _qf_lb[ t ] * sxl > 0.0 )
     {
       lj   = fabs( _qf_lb[ t ] );
-      axl1 = axl - lj*( _qf_n[t] + _qf_nc[ t ] );  
+      axl1 = axl - lj*( _qf_n[t] + _qf_nc[ t ] );
       axl2 = lj / LOG28;
-      if ( axl1 > axl2 )  
-        axl = axl1; 
+      if ( axl1 > axl2 )
+        axl = axl1;
       else
       {
         if ( axl > axl2 )
@@ -2439,29 +2440,29 @@ double FitTools::_qf_cfe( double x )
       }
     }
   }
-  
+
   l:
     if ( sum1 > 100.0 )
-    { 
-      _qf_fail = true; 
-      return 1.0; 
-    } 
+    {
+      _qf_fail = true;
+      return 1.0;
+    }
     else
       return pow( 2.0, ( sum1 / 4.0 ) ) / ( M_PI*square( axl ) );
 }
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #undef LOG28
 #undef square
-#undef cube  
+#undef cube
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void PSF_function_F( int& N, double* X, int& NF, double* F, int* Na, 
+void PSF_function_F( int& N, double* X, int& NF, double* F, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  The objective function to minimise for the point source fit. It is built 
+//  The objective function to minimise for the point source fit. It is built
 //  as a chi2 over all antennas, requiring:
 //
 //  | Xa - Xs | - cs*( Ta - Ts ) = 0
@@ -2473,27 +2474,27 @@ void PSF_function_F( int& N, double* X, int& NF, double* F, int* Na,
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double d1, d2, d3, fi;
-  
+
   std::cout.precision(15);
   F[ 0 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) 
-  {    
+  for ( int i = 0; i < Na[ 0 ]; i++ )
+  {
     d1      = ( X[ 0 ] - Xa[ i*N_ANTENNA_DATA     ] );
     d2      = ( X[ 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ] );
-    d3      = ( X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 2 ] ); 
-    fi      = X[ 4 ]*( X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ] ) + 
+    d3      = ( X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 2 ] );
+    fi      = X[ 4 ]*( X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ] ) +
                 sqrt( d1*d1 + d2*d2 + d3*d3 );
     //std::cout << "** Antenna " << i << ": (" << Xa[ i*N_ANTENNA_DATA     ] << "," << Xa[ i*N_ANTENNA_DATA + 1 ] << "," << Xa[ i*N_ANTENNA_DATA + 2 ] << "): t = " << Xa[ i*N_ANTENNA_DATA + 3  ] << std::endl;
-    //std::cout << "dPos = " <<  sqrt( d1*d1 + d2*d2 + d3*d3 ) << ", dTime = " <<  X[ 4 ]*( X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ] ) << ", sum = " << fi << std::endl;		
-    F[ 0 ] += fi*fi;    
+    //std::cout << "dPos = " <<  sqrt( d1*d1 + d2*d2 + d3*d3 ) << ", dTime = " <<  X[ 4 ]*( X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ] ) << ", sum = " << fi << std::endl;
+    F[ 0 ] += fi*fi;
   }
-  //std::cout << "Source: (" << X[ 0 ] <<", " << X[ 1 ] << ", " << X[ 2 ]  << "), time " << X[ 3 ]  << std::endl;	
+  //std::cout << "Source: (" << X[ 0 ] <<", " << X[ 1 ] << ", " << X[ 2 ]  << "), time " << X[ 3 ]  << std::endl;
   //std::cout << "Chi2 = " << F[ 0 ] << std::endl;
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void PSF_function_G( int& N, double* X, int& NF, double* G, int* Na, 
+void PSF_function_G( int& N, double* X, int& NF, double* G, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -2504,14 +2505,14 @@ void PSF_function_G( int& N, double* X, int& NF, double* G, int* Na,
   static double d1, d2, d3, d, fi;
 
   G[ 0 ] = G[ 1 ] = G[ 2 ] = G[ 3 ] = G[ 4 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) 
+  for ( int i = 0; i < Na[ 0 ]; i++ )
   {
     d1  = ( X[ 0 ] - Xa[ i*N_ANTENNA_DATA     ] );
     d2  = ( X[ 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ] );
     d3  = ( X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 2 ] );
     d   = sqrt( d1*d1 + d2*d2 + d3*d3 );
     fi  = X[ 4 ]*( X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ] ) + d;
-    
+
     G[ 0 ] += ( X[ 0 ] - Xa[ i*N_ANTENNA_DATA	  ] )*fi/d;
     G[ 1 ] += ( X[ 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ] )*fi/d;
     G[ 2 ] += ( X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 2 ] )*fi/d;
@@ -2525,36 +2526,36 @@ void PSF_function_G( int& N, double* X, int& NF, double* G, int* Na,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void PWF_function_F( int& N, double* X, int& NF, double* F, int* Na, 
+void PWF_function_F( int& N, double* X, int& NF, double* F, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  The objective function to minimise for plane wave fit. It is built 
+//  The objective function to minimise for plane wave fit. It is built
 //  as a chi2 over all antennas, requiring:
 //
 //  ( Xa_j - Xa_i ).k - cr*( Ta_j - Ta_i ) = 0
 //
 //  over all pairs.
 //
-//  Time is assumed to be expressed in m and speed cr is normalised to C0  
+//  Time is assumed to be expressed in m and speed cr is normalised to C0
 //
-//  OMH 28/09/09: warning: due to modified conventions ( x=WE, y=SN ), 
+//  OMH 28/09/09: warning: due to modified conventions ( x=WE, y=SN ),
 //  convertions from cartesian to spherical coordinates has been modified.
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double st, ct, sp, cp, fi;
-  
+
   ct = cos( X[ 0 ] );
   st = sin( X[ 0 ] );
   cp = cos( X[ 1 ] );
   sp = sin( X[ 1 ] );
- 
-  
+
+
   F[ 0 ] = 0.0;
-  for ( int j = 0; j < Na[ 0 ]-1; j++ ) 
+  for ( int j = 0; j < Na[ 0 ]-1; j++ )
   {
     //std::cout << "** Antenna " << j << ": (" << Xa[ j*N_ANTENNA_DATA     ] << "," << Xa[ j*N_ANTENNA_DATA + 1 ] << "," << Xa[ j*N_ANTENNA_DATA + 2 ] << "): t = " << Xa[ j*N_ANTENNA_DATA + 3  ] << std::endl;
-    for ( int i = j+1; i < Na[ 0 ]; i++ ) 
+    for ( int i = j+1; i < Na[ 0 ]; i++ )
     {
     //std::cout << "Antenna " << i << ": (" << Xa[ i*N_ANTENNA_DATA     ] << "," << Xa[ i*N_ANTENNA_DATA + 1 ] << "," << Xa[ i*N_ANTENNA_DATA + 2 ] << "): t = " << Xa[ i*N_ANTENNA_DATA + 3  ] << std::endl;
     fi  = -( Xa[ j*N_ANTENNA_DATA     ] - Xa[ i*N_ANTENNA_DATA     ] )*st*sp;
@@ -2565,39 +2566,39 @@ void PWF_function_F( int& N, double* X, int& NF, double* F, int* Na,
     F[ 0 ]+= fi*fi;
     }
   }
-  //std::cout << "*** Nants = " << Na[ 0 ] << ", theta = " << X[ 0 ]*180/3.14159 << " deg, " << "phi = " << X[ 1 ]*180/3.14159 << " deg ->  Chi2 = " << F[0] << std::endl; 
+  //std::cout << "*** Nants = " << Na[ 0 ] << ", theta = " << X[ 0 ]*180/3.14159 << " deg, " << "phi = " << X[ 1 ]*180/3.14159 << " deg ->  Chi2 = " << F[0] << std::endl;
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void PWF_function_G( int& N, double* X, int& NF, double* G, int* Na, 
+void PWF_function_G( int& N, double* X, int& NF, double* G, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
 //  The gradient of the objective function.
-//  OMH 28/09/09: warning: due to modified conventions (x=WE, y=SN), 
+//  OMH 28/09/09: warning: due to modified conventions (x=WE, y=SN),
 //  conversions from cartesian to spherical corrdinates has been modified.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double st, ct, sp, cp, xij, yij, zij, tij, fi;
-  
+
   ct = cos( X[ 0 ] );
   st = sin( X[ 0 ] );
   cp = cos( X[ 1 ] );
   sp = sin( X[ 1 ] );
-  
+
   G[ 0 ] = G[ 1 ] = G[ 2 ] = 0.0;
-  for ( int j = 0; j < Na[ 0 ]-1; j++ ) 
-    for ( int i = j+1; i < Na[ 0 ]; i++ ) 
+  for ( int j = 0; j < Na[ 0 ]-1; j++ )
+    for ( int i = j+1; i < Na[ 0 ]; i++ )
   {
     xij = Xa[ j*N_ANTENNA_DATA     ] - Xa[ i*N_ANTENNA_DATA     ];
     yij = Xa[ j*N_ANTENNA_DATA + 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ];
     zij = Xa[ j*N_ANTENNA_DATA + 2 ] - Xa[ i*N_ANTENNA_DATA + 2 ];
     tij = Xa[ j*N_ANTENNA_DATA + 3 ] - Xa[ i*N_ANTENNA_DATA + 3 ];
-  
+
     fi  = ( -xij*sp + yij*cp )*st + zij*ct - X[2]*tij;
-    
+
     G[ 0 ]+= ( ( -xij*sp + yij*cp )*ct - zij*st )*fi;
     G[ 1 ]+= ( ( -xij*cp - yij*sp )*st + zij*ct )*fi;
     G[ 2 ]-= tij*fi;
@@ -2609,11 +2610,11 @@ void PWF_function_G( int& N, double* X, int& NF, double* G, int* Na,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void SAM_function_F( int& N, double* X, int& NF, double* F, int* Na, 
+void SAM_function_F( int& N, double* X, int& NF, double* F, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  The objective function to minimise for spherical source amplitude fit. 
+//  The objective function to minimise for spherical source amplitude fit.
 //  It is built as a chi2 over all antennas, requiring:
 //
 //  si = s0 /|R-Ri|
@@ -2621,31 +2622,31 @@ void SAM_function_F( int& N, double* X, int& NF, double* F, int* Na,
 //  where si is the signal on antenna i, Ri the position of antenna i and
 //  R the source position.
 //
-//  Amplitude is assumed to be expressed in dB.  
+//  Amplitude is assumed to be expressed in dB.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double xi, yi, zi, fi;
-  
+
   F[ 0 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) 
+  for ( int i = 0; i < Na[ 0 ]; i++ )
   {
     xi = X[ 1 ] - Xa[ i*N_ANTENNA_DATA     ];
     yi = X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 1 ];
     zi = X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 2 ];
-    fi = Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 0 ] + 10.0*log10( xi*xi + yi*yi + 
+    fi = Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 0 ] + 10.0*log10( xi*xi + yi*yi +
       zi*zi );
-   
-    if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit 
+
+    if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit
       fi = 0.0;
-    
+
     F[ 0 ]+= fi*fi;
   }
 }
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void SAM_function_G( int& N, double* X, int& NF, double* G, int* Na, 
+void SAM_function_G( int& N, double* X, int& NF, double* G, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -2654,23 +2655,23 @@ void SAM_function_G( int& N, double* X, int& NF, double* G, int* Na,
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double fi, di, xi, yi, zi;
-  
+
   const static double cte = 40.0/log(10.0);
-  
+
   G[ 0 ] = G[ 1 ] = G[ 2 ] = G[ 3 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) 
-  {  
+  for ( int i = 0; i < Na[ 0 ]; i++ )
+  {
     xi = X[ 1 ] - Xa[ i*N_ANTENNA_DATA     ];
     yi = X[ 2 ] - Xa[ i*N_ANTENNA_DATA + 1 ];
     zi = X[ 3 ] - Xa[ i*N_ANTENNA_DATA + 2 ];
     di = xi*xi + yi*yi + zi*zi;
-    fi = Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 0 ] + 10.0*log10( xi*xi + yi*yi + 
+    fi = Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 0 ] + 10.0*log10( xi*xi + yi*yi +
       zi*zi );
-   
-    if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit 
+
+    if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit
       fi = 0.0;
-    
-    G[ 0 ]+= fi;  
+
+    G[ 0 ]+= fi;
     G[ 1 ]+= fi*xi/di;
     G[ 2 ]+= fi*yi/di;
     G[ 3 ]+= fi*zi/di;
@@ -2684,47 +2685,47 @@ void SAM_function_G( int& N, double* X, int& NF, double* G, int* Na,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void EAM_function_F( int& N, double* X, int& NF, double* F, int* Na, 
+void EAM_function_F( int& N, double* X, int& NF, double* F, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-//  The objective function to minimise for exponential amplitude fit. It is 
+//  The objective function to minimise for exponential amplitude fit. It is
 //  built as a chi2 over all antennas, requiring:
 //
 //  si = s0 - a0*di
 //
-//  where si is the signal on antenna i and di the lateral distance to the 
+//  where si is the signal on antenna i and di the lateral distance to the
 //  axis given as:
 //
 //  di^2 = | Xi - X0 |^2 - ( ( Xi - X0 ).u )^2
 //
-//  with X0 the point on the cascade axis that intercepts the plane z0 = 0, 
-//  and u the cascade direction  
+//  with X0 the point on the cascade axis that intercepts the plane z0 = 0,
+//  and u the cascade direction
 //
-//  Amplitude si and loss a0 are assumed to be expressed in dB and dB/m.  
+//  Amplitude si and loss a0 are assumed to be expressed in dB and dB/m.
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double fi, di, xi, yi, zi, ux, uy, uz;
-  
+
   ux = Xa[ N_ANTENNA_DATA*MAX_ANTENNA     ];
   uy = Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 1 ];
   uz = Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 2 ];
 
   F[ 0 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) 
+  for ( int i = 0; i < Na[ 0 ]; i++ )
   {
     xi = X[ 0 ] - Xa[ i*N_ANTENNA_DATA     ];
     yi = X[ 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ];
     zi =        - Xa[ i*N_ANTENNA_DATA + 2 ];
-    di = xi*ux + yi*uy + zi*uz; 
+    di = xi*ux + yi*uy + zi*uz;
     di = xi*xi + yi*yi + zi*zi - di*di;
     if ( di < 0.0 ) // prevent rounding error
       di = 0.0;
     else
-      di = sqrt( di ); 
+      di = sqrt( di );
     fi = X[ 3 ]*di + Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 2 ];
-    
+
     if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit
       fi = 0.0;
 
@@ -2734,7 +2735,7 @@ void EAM_function_F( int& N, double* X, int& NF, double* F, int* Na,
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-void EAM_function_G( int& N, double* X, int& NF, double* G, int* Na, 
+void EAM_function_G( int& N, double* X, int& NF, double* G, int* Na,
   double* Xa, void* UFPARM )
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -2743,27 +2744,27 @@ void EAM_function_G( int& N, double* X, int& NF, double* G, int* Na,
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   static double fi, si, di, xi, yi, zi, ux, uy, uz;
-  
+
   ux = Xa[ N_ANTENNA_DATA*MAX_ANTENNA     ];
   uy = Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 1 ];
   uz = Xa[ N_ANTENNA_DATA*MAX_ANTENNA + 2 ];
-  
+
   G[ 0 ] = G[ 1 ] = G[ 2 ] = G[ 3 ] = 0.0;
-  for ( int i = 0; i < Na[ 0 ]; i++ ) {  
+  for ( int i = 0; i < Na[ 0 ]; i++ ) {
     xi = X[ 0 ] - Xa[ i*N_ANTENNA_DATA     ];
     yi = X[ 1 ] - Xa[ i*N_ANTENNA_DATA + 1 ];
     zi =        - Xa[ i*N_ANTENNA_DATA + 2 ];
-    si = xi*ux + yi*uy + zi*uz; 
+    si = xi*ux + yi*uy + zi*uz;
     di = xi*xi + yi*yi + zi*zi - si*si;
     if ( di < 0.0 ) // prevent rounding error
       di = 0.0;
     else
       di = sqrt( di );
     fi = X[ 3 ]*di + Xa[ i*N_ANTENNA_DATA + 4 ] - X[ 2 ];
-      
+
     if ( ( Xa[ i*N_ANTENNA_DATA + 5 ] >= 1 ) && ( fi < 0.0 ) ) // Saturated antenna and fit
       fi = 0.0;
-      
+
     G[ 0 ]+= fi/di*( xi - si*ux );
     G[ 1 ]+= fi/di*( yi - si*uy );
     G[ 2 ]+= fi;

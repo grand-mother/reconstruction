@@ -1,7 +1,8 @@
-EXTLIBS := -lm -lc -Llib -lport_i -lfittools -lgfortran
-CCPL    := g++ -O2 -Wno-write-strings
-FCPL    := gfortran -O2
-FOPTS   := -fno-second-underscore -w
+export CPP := g++
+export CPPFLAGS := -O2 -Wno-write-strings
+export FC := gfortran -O2
+export FFLAGS := -fno-second-underscore -w
+LIBS := -lm -lc -Llib -lport_i -lfittools -lgfortran
 
 TARGETS := bin/example bin/recons bin/reconsHybrid bin/reconsScint             \
 	bin/reconsShower
@@ -16,17 +17,17 @@ clean:
 
 bin/%: objs/%.o lib/libfittools.a
 	@mkdir -p bin
-	@$(CCPL) -o $@ $< lib/libfittools.a $(EXTLIBS)
+	@$(CPP) $(CPPFLAGS) -o $@ $< lib/libfittools.a $(LIBS)
 	@rm -f $<
 
 objs/%.o: src/%.cxx src/%.h objs
-	@$(CCPL) -o $@ -c $<
+	@$(CPP) $(CPPFLAGS) -o $@ -c $<
 
 objs/%.o: src/%.cxx objs
-	@$(CCPL) -o $@ -c $<
+	@$(CPP) $(CPPFLAGS) -o $@ -c $<
 
 objs/%.o: src/%.f objs
-	@$(FCPL) $(FOPTS) -o $@ -c $<
+	@$(FC) $(FFLAGS) -o $@ -c $<
 
 lib/libfittools.a: objs/FitTools.o objs/AS153.o lib/libport_i.a
 	@mkdir -p lib
@@ -35,7 +36,7 @@ lib/libfittools.a: objs/FitTools.o objs/AS153.o lib/libport_i.a
 
 lib/libport_i.a:
 	@mkdir -p lib
-	@$(MAKE) -C port_i
+	@$(MAKE) -e -C port_i
 	@cd lib && ln -s ../port_i/lib/libport_i.a libport_i.a
 
 objs:
