@@ -2,7 +2,16 @@ export CPP := g++
 export CPPFLAGS := -O2 -Wno-write-strings
 export FC := gfortran -O2
 export FFLAGS := -fno-second-underscore -w
-LIBS := -lm -lc -Llib -lport_i -lfittools -lgfortran
+LIBS := -lm -lc -Llib -lport_i -lfittools
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    LIBS += -lgfortran
+endif
+ifeq ($(UNAME_S),Darwin)
+    LIBS += -L/usr/local/gfortran/lib/ -lgfortran
+endif
+
 
 TARGETS := bin/example bin/recons bin/reconsHybrid bin/reconsScint             \
 	bin/reconsShower

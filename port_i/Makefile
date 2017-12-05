@@ -2,7 +2,15 @@ CPP := g++
 CPPFLAGS := -O2 -Wno-write-strings
 FC := gfortran
 FFLAGS := -O2 -fno-second-underscore -w
-LIBS := -L/usr/lib -lc -lm -lgfortran
+LIBS := -L/usr/lib -lc -lm
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    LIBS += -lgfortran
+endif
+ifeq ($(UNAME_S),Darwin)
+    LIBS += -L/usr/local/gfortran/lib/ -lgfortran
+endif
 
 all: lib/libport_i.a
 
