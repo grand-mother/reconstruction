@@ -5,8 +5,9 @@ Initial soft from TREND recons.
 
 Software is based on the PORT library for function minimisation.
 Execution is carried out through command:
+```bash
 bin/recons [RunId] 0
-
+```
 Input files are:
 - coord_antennas.txt with format [AntennaId x(WE) y(SN) z(alt asl] where x,y, z are in meters
 - R[RunId]_coinctable.txt with format [UnixTime AntId EvtId CoincId TrigTime1 x x x x x x x ]
