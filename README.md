@@ -15,10 +15,8 @@ TrigTime is given in nanoseconds wrt earliest trigger in coinc.
 
 Output files are:
 - R[RunId]_planerecons.txt with format [CoincId UnixTime Mult Theta dTheta Phi dPhi Chi2 Signif]
-Theta and Phi can be converted to TREND conventions (theta = CR convention, Phi counted positvely counterclock-wise from East) through the following commands:
-theta = 180-theta    &   phi = 180+phi
+Theta and Phi are given in GRAND conventions.
 - R[RunId]_sphrecons.txt with format [CoincId UnixTime Mult x y z t@source Chi2 Signif] where (x,y,z) are given in TREND coordinates.
-
 To be done (04/12/2017): change code to match GRAND referential & angular conventions
 
 # Build
