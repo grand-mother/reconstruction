@@ -10,8 +10,8 @@ bin/recons [RunId] 0
 ```
 Input files are:
 - coord_antennas.txt with format [AntennaId x(WE) y(SN) z(alt asl] where x,y, z are in meters
-- R[RunId]_coinctable.txt with format [UnixTime AntId EvtId CoincId TrigTime1 x x x x x x x ]
-TrigTimes are given in ns wrt earliest trigger in coinc.
+- R[RunId]_coinctable.txt with format [UnixTime AntId EvtId CoincId TrigTime x x x x x x x ]
+TrigTime is given in nanoseconds wrt earliest trigger in coinc.
 
 Output files are:
 - R[RunId]_planerecons.txt with format [CoincId UnixTime Mult Theta dTheta Phi dPhi Chi2 Signif]
